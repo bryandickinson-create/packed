@@ -466,34 +466,73 @@
   }
 
   /* ---------- sound ---------- */
-  var actx = null, soundOn = local("packed:sound") !== "off";
+  var actx = null, master = null, soundOn = local("packed:sound") !== "off";
   function audioCtx(){
-    if(!actx){ try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ actx = null; } }
+    if(!actx){
+      try{
+        actx = new (window.AudioContext || window.webkitAudioContext)();
+        master = actx.createGain(); master.gain.value = 0.9; master.connect(actx.destination);
+      }catch(e){ actx = null; }
+    }
     if(actx && actx.state === "suspended"){ try{ actx.resume(); }catch(e){} }
     return actx;
   }
-  var SND = {
-    pack:   [{f:523,d:0.10,type:"triangle"}],
-    got:    [{f:659,d:0.09,type:"triangle"},{f:988,d:0.13,at:0.075,type:"triangle"}],
-    reset:  [{f:300,d:0.09,type:"sine",v:0.09}],
-    kidDone:[{f:523,d:0.12,type:"triangle"},{f:659,d:0.12,at:0.10,type:"triangle"},{f:784,d:0.20,at:0.20,type:"triangle"}],
-    allDone:[{f:523,d:0.13,type:"triangle"},{f:659,d:0.13,at:0.11,type:"triangle"},{f:784,d:0.13,at:0.22,type:"triangle"},{f:1047,d:0.32,at:0.33,type:"triangle",v:0.17},{f:1319,d:0.30,at:0.42,type:"sine",v:0.11}]
-  };
-  function play(name){
-    if(!soundOn) return;
+  // one voice: optional pitch glide + a quick pluck envelope
+  function blip(o){
     var ctx = audioCtx(); if(!ctx) return;
-    var t0 = ctx.currentTime;
-    (SND[name] || []).forEach(function(n){
-      var o = ctx.createOscillator(), g = ctx.createGain();
-      o.type = n.type || "sine"; o.frequency.value = n.f;
-      var s = t0 + (n.at || 0), dur = n.d || 0.12, vol = n.v || 0.14;
-      g.gain.setValueAtTime(0.0001, s);
-      g.gain.exponentialRampToValueAtTime(vol, s + 0.012);
-      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
-      o.connect(g); g.connect(ctx.destination);
-      o.start(s); o.stop(s + dur + 0.03);
-    });
+    var t = ctx.currentTime + (o.at || 0), dur = o.dur || 0.15, vol = o.vol == null ? 0.2 : o.vol;
+    var osc = ctx.createOscillator(), g = ctx.createGain();
+    osc.type = o.type || "sine";
+    osc.frequency.setValueAtTime(o.f0, t);
+    if(o.f1) osc.frequency.exponentialRampToValueAtTime(o.f1, t + (o.sweep || dur));
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + (o.attack || 0.006));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    osc.connect(g); g.connect(master);
+    osc.start(t); osc.stop(t + dur + 0.05);
   }
+  // short filtered noise burst — the transient "click" that sells a pop, or a sparkle whoosh
+  function noiseBurst(o){
+    var ctx = audioCtx(); if(!ctx) return;
+    var t = ctx.currentTime + (o.at || 0), dur = o.dur || 0.05;
+    var len = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    var buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+    for(var i=0;i<len;i++){ d[i] = (Math.random()*2 - 1) * (1 - i/len); }
+    var src = ctx.createBufferSource(); src.buffer = buf;
+    var g = ctx.createGain(); g.gain.value = o.vol == null ? 0.15 : o.vol;
+    if(o.freq){ var f = ctx.createBiquadFilter(); f.type = o.filter || "bandpass"; f.frequency.value = o.freq; f.Q.value = o.Q || 1; src.connect(f); f.connect(g); }
+    else src.connect(g);
+    g.connect(master); src.start(t); src.stop(t + dur);
+  }
+  // bubble pop — a tiny click + a quick rising "bloop"
+  function popSound(){
+    noiseBurst({ dur:0.02, vol:0.12, filter:"bandpass", freq:1100, Q:0.8 });
+    blip({ type:"sine", f0:240, f1:680, sweep:0.055, dur:0.13, vol:0.30 });
+    blip({ type:"sine", f0:680, f1:1300, sweep:0.05, dur:0.07, vol:0.10, at:0.004 });
+  }
+  // "got it" — substantial: a low body thump under a bright rising two-note confirm
+  function doneSound(){
+    blip({ type:"sine",     f0:200, f1:110, sweep:0.14, dur:0.24, vol:0.26 }); // body thump
+    blip({ type:"triangle", f0:587, dur:0.20, vol:0.18 });                     // D5
+    blip({ type:"triangle", f0:880, dur:0.32, vol:0.16, at:0.075 });           // A5 — the "ta-da"
+    blip({ type:"sine",     f0:1760, dur:0.22, vol:0.06, at:0.075 });          // shimmer
+  }
+  // undo — soft downward bloop
+  function resetSound(){ blip({ type:"sine", f0:420, f1:170, sweep:0.11, dur:0.15, vol:0.12 }); }
+  // one kid finished their list — quick major arpeggio with a sparkle tail
+  function kidDoneSound(){
+    [523,659,784,1047].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.22, vol:0.17, at:i*0.085 }); });
+    blip({ type:"sine", f0:1568, dur:0.5, vol:0.07, at:0.36 });
+  }
+  // everyone packed — full celebratory fanfare: whoosh, rising run, final chord, sparkles
+  function allDoneSound(){
+    noiseBurst({ dur:0.35, vol:0.05, filter:"highpass", freq:1800 });
+    [523,659,784,1047,1319,1568].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.26, vol:0.17, at:i*0.085 }); });
+    [523,659,784,1047].forEach(function(f){ blip({ type:"triangle", f0:f, dur:0.8, vol:0.14, at:0.56 }); });
+    [2093,2349,2637].forEach(function(f,i){ blip({ type:"sine", f0:f, dur:0.4, vol:0.05, at:0.6 + i*0.12 }); });
+  }
+  var SND = { pack:popSound, got:doneSound, reset:resetSound, kidDone:kidDoneSound, allDone:allDoneSound };
+  function play(name){ if(!soundOn) return; if(!audioCtx()) return; (SND[name] || function(){})(); }
   function celebrate(){
     try{
       if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
