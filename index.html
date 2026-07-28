@@ -45,7 +45,9 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{margin:0;padding:0}
   body{background:var(--ink);color:var(--text);font-family:var(--body);font-size:16px;
-    line-height:1.45;min-height:100vh;padding:14px 12px 90px;display:flex;justify-content:center}
+    line-height:1.45;min-height:100vh;display:flex;justify-content:center;
+    padding:calc(14px + env(safe-area-inset-top, 0px)) calc(12px + env(safe-area-inset-right, 0px))
+            calc(90px + env(safe-area-inset-bottom, 0px)) calc(12px + env(safe-area-inset-left, 0px))}
   .app{width:100%;max-width:540px}
 
   .mast{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:6px}
