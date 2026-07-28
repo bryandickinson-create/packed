@@ -201,6 +201,7 @@
   /* ============================================================ */
 
   var CACHE = "packed:cache", CODEKEY = "packed:code";
+  var NAMES = ["Atticus","Linus"];
   var DOW = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
   var DOW3 = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
   var DOW1 = ["S","M","T","W","T","F","S"];
@@ -226,7 +227,7 @@
 
   /* ---------- state ---------- */
   function blank(){
-    return { kids:[{id:"a",name:"Kid 1",t:0},{id:"b",name:"Kid 2",t:0}], items:{}, status:{} };
+    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{} };
   }
   function seed(){
     var s = blank(), t = now();
@@ -244,7 +245,7 @@
   function merge(a,b){
     var out = { kids:[], items:{}, status:{} };
     for(var i=0;i<2;i++){
-      var ka = (a.kids&&a.kids[i]) || {id:i?"b":"a",name:"Kid "+(i+1),t:0};
+      var ka = (a.kids&&a.kids[i]) || {id:i?"b":"a",name:NAMES[i]||("Kid "+(i+1)),t:0};
       var kb = (b.kids&&b.kids[i]) || ka;
       out.kids.push((kb.t||0) > (ka.t||0) ? kb : ka);
     }
@@ -491,7 +492,7 @@
     app.querySelectorAll("[data-rename]").forEach(function(inp){
       inp.addEventListener("change", function(){
         var i = +inp.dataset.rename, v = inp.value.trim();
-        state.kids[i] = { id:state.kids[i].id, name:v || ("Kid "+(i+1)), t:now() };
+        state.kids[i] = { id:state.kids[i].id, name:v || NAMES[i] || ("Kid "+(i+1)), t:now() };
         touched(); render();
       });
     });
