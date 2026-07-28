@@ -37,7 +37,7 @@
     --ink:#121824; --panel:#1B2331; --panel-2:#222C3D; --line:#2E3A4E;
     --text:#E8EEF7; --muted:#8B9BB4;
     --red:#F2564B; --amber:#F6A821; --green:#3FCF6E;
-    --kid-a:#4EA8FF; --kid-b:#B57BFF; --accent:var(--kid-a);
+    --kid-a:#4EA8FF; --kid-b:#FF8C42; --accent:var(--kid-a);
     --display:"Barlow Condensed","Oswald","Arial Narrow",system-ui,sans-serif;
     --body:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
     --r:14px;
@@ -67,7 +67,8 @@
   .sync.busy i{background:var(--amber);animation:blink 1s infinite}
   .sync.off i{background:var(--red)}
   @keyframes blink{50%{opacity:.25}}
-  .sync button{margin-left:auto}
+  .sync .ic{margin-left:auto;padding:8px 10px;font-size:14px;line-height:1}
+  .sync #switchCode{margin-left:6px}
 
   .kids{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
   .kid{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);
@@ -204,6 +205,28 @@
     font-size:12.5px;color:var(--text)}
   .loading{text-align:center;padding:60px 0;color:var(--muted);font-family:var(--display);
     letter-spacing:.14em;text-transform:uppercase}
+  /* ---------- iPad two-up layout ---------- */
+  .col{min-width:0}
+  .colhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+    padding:0 2px 10px;border-bottom:1px solid var(--line);margin-bottom:12px}
+  .colnm{font-family:var(--display);font-weight:700;font-size:24px;line-height:1;
+    text-transform:uppercase;letter-spacing:.03em;color:var(--accent)}
+  .colct{font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--muted);flex:none}
+  .colhead input{flex:1;min-width:0;background:#131A26;border:1px solid var(--line);color:var(--text);
+    border-radius:8px;padding:5px 9px;font-family:var(--display);font-size:20px;font-weight:700;
+    text-transform:uppercase;letter-spacing:.03em}
+  .colhead input:focus{outline:2px solid var(--accent);outline-offset:1px}
+  @media (min-width:900px){
+    .app{max-width:1040px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
+  }
+
+  /* ---------- celebration ---------- */
+  .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:60}
+  .confetti i{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;opacity:.95;
+    animation:fall linear forwards}
+  @keyframes fall{to{transform:translateY(104vh) rotate(540deg);opacity:.85}}
+
   @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -231,7 +254,7 @@
   var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 
   var state = null, code = null, kid = 0, view = new Date(), edit = false;
-  var viewMode = "today", schedDraft = { days:[1,2,3,4,5] };
+  var viewMode = "today", schedDraft = {}, formKid = 0;
   var formOpen = false, draft = {type:"daily", days:[]};
   var dirty = false, netOk = true, busy = false, lastSync = 0, clock = 0, timer = null;
   var app = document.getElementById("app");
@@ -440,216 +463,331 @@
       : netOk ? ("Synced · " + code) : "Offline — saved on this device";
   }
 
-  /* ---------- render ---------- */
-  function render(){
-    var k = state.kids[kid];
-    document.documentElement.style.setProperty("--accent", kid === 0 ? "var(--kid-a)" : "var(--kid-b)");
-    var dk = key(view), c = counts(k.id, view);
+  /* ---------- sound ---------- */
+  var actx = null, soundOn = local("packed:sound") !== "off";
+  function audioCtx(){
+    if(!actx){ try{ actx = new (window.AudioContext || window.webkitAudioContext)(); }catch(e){ actx = null; } }
+    if(actx && actx.state === "suspended"){ try{ actx.resume(); }catch(e){} }
+    return actx;
+  }
+  var SND = {
+    pack:   [{f:523,d:0.10,type:"triangle"}],
+    got:    [{f:659,d:0.09,type:"triangle"},{f:988,d:0.13,at:0.075,type:"triangle"}],
+    reset:  [{f:300,d:0.09,type:"sine",v:0.09}],
+    kidDone:[{f:523,d:0.12,type:"triangle"},{f:659,d:0.12,at:0.10,type:"triangle"},{f:784,d:0.20,at:0.20,type:"triangle"}],
+    allDone:[{f:523,d:0.13,type:"triangle"},{f:659,d:0.13,at:0.11,type:"triangle"},{f:784,d:0.13,at:0.22,type:"triangle"},{f:1047,d:0.32,at:0.33,type:"triangle",v:0.17},{f:1319,d:0.30,at:0.42,type:"sine",v:0.11}]
+  };
+  function play(name){
+    if(!soundOn) return;
+    var ctx = audioCtx(); if(!ctx) return;
+    var t0 = ctx.currentTime;
+    (SND[name] || []).forEach(function(n){
+      var o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = n.type || "sine"; o.frequency.value = n.f;
+      var s = t0 + (n.at || 0), dur = n.d || 0.12, vol = n.v || 0.14;
+      g.gain.setValueAtTime(0.0001, s);
+      g.gain.exponentialRampToValueAtTime(vol, s + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, s + dur);
+      o.connect(g); g.connect(ctx.destination);
+      o.start(s); o.stop(s + dur + 0.03);
+    });
+  }
+  function celebrate(){
+    try{
+      if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      var wrap = document.createElement("div"); wrap.className = "confetti";
+      var cols = ["#4EA8FF","#FF8C42","#3FCF6E","#F6A821","#FFFFFF"];
+      for(var i=0;i<32;i++){
+        var p = document.createElement("i");
+        p.style.left = (Math.random()*100) + "vw";
+        p.style.background = cols[i % cols.length];
+        p.style.animationDelay = (Math.random()*0.25) + "s";
+        p.style.animationDuration = (0.9 + Math.random()*0.8) + "s";
+        wrap.appendChild(p);
+      }
+      document.body.appendChild(wrap);
+      setTimeout(function(){ if(wrap.parentNode) wrap.parentNode.removeChild(wrap); }, 2200);
+    }catch(e){}
+  }
+
+  /* ---------- responsive ---------- */
+  var WIDE = window.matchMedia ? window.matchMedia("(min-width: 900px)") : { matches:false };
+  function isWide(){ return !!WIDE.matches; }
+  if(WIDE.addEventListener) WIDE.addEventListener("change", function(){ if(state && code) render(); });
+  else if(WIDE.addListener) WIDE.addListener(function(){ if(state && code) render(); });
+
+  /* ---------- tiny helpers ---------- */
+  function q(sel){ return app.querySelectorAll(sel); }
+  function byId(id){ return document.getElementById(id); }
+  function on(el, ev, fn){ if(el) el.addEventListener(ev, fn); }
+  function tint(ki){ return ki === 0 ? "var(--kid-a)" : "var(--kid-b)"; }
+  function dowLabel(dk){
     var todayK = key(startOfToday()), tomorrowK = key(shift(startOfToday(),1));
-    var mode = dk === tomorrowK && isEvening() ? "night"
-             : dk === todayK && !isEvening() ? "morning"
-             : dk === todayK ? "night-today" : "other";
-    var cue = mode === "night" ? ["Tonight","Get everything in the bag, then tap once. Amber means packed."]
-            : mode === "morning" ? ["This morning","Tap each thing again as you grab it. Green means it's with you."]
-            : mode === "night-today" ? ["Today","Tap once when it's packed, twice when you've got it."]
-            : ["Ahead","Planning ahead. Tap once when it's packed, twice when you've got it."];
-    if(c.total > 0 && c.confirmed === c.total) cue = ["All set","Everything's confirmed. Out the door."];
-    var pctA = c.total ? (c.packed/c.total*100) : 0;
-    var pctG = c.total ? (c.confirmed/c.total*100) : 0;
+    return dk===todayK ? " &middot; Today" : dk===tomorrowK ? " &middot; Tomorrow" : "";
+  }
+  function timeCue(dk){
+    var todayK = key(startOfToday()), tomorrowK = key(shift(startOfToday(),1));
+    var m = dk===tomorrowK && isEvening() ? "night"
+          : dk===todayK && !isEvening() ? "morning"
+          : dk===todayK ? "night-today" : "other";
+    return m==="night" ? ["Tonight","Get everything in the bag, then tap once. Amber means packed."]
+         : m==="morning" ? ["This morning","Tap each thing again as you grab it. Green means it's with you."]
+         : m==="night-today" ? ["Today","Tap once when it's packed, twice when you've got it."]
+         : ["Ahead","Planning ahead. Tap once when it's packed, twice when you've got it."];
+  }
+  function dayComplete(kidId, d){ var c = counts(kidId, d); return c.total>0 && c.confirmed===c.total; }
+  function allComplete(d){
+    var any=false, ok=true;
+    state.kids.forEach(function(p){ var c=counts(p.id,d); if(c.total>0){ any=true; if(c.confirmed!==c.total) ok=false; } });
+    return any && ok;
+  }
 
-    var html = ''
-    + '<div class="mast">'
-    +   '<h1 class="word">Pack<span>ed</span><small>School &amp; sports checklist</small></h1>'
-    +   '<button class="ghost' + (edit?" on":"") + '" id="editBtn">' + (edit?"Done":"Edit list") + '</button>'
-    + '</div>'
-    + '<div class="sync ' + (busy?"busy":netOk?"ok":"off") + '"><i></i><span>'
-    +   (busy ? "Syncing…" : netOk ? ("Synced · " + esc(code)) : "Offline — saved on this device")
-    +   '</span><button class="ghost" id="switchCode">Change code</button></div>'
-    + '<div class="kids" role="tablist">' + state.kids.map(function(p,i){
-        var cc = counts(p.id, view), tint = i===0 ? "var(--kid-a)" : "var(--kid-b)";
-        return '<button class="kid" role="tab" aria-selected="' + (i===kid) + '" data-kid="' + i + '" style="--tint:' + tint + '">'
-          + (edit ? '<input type="text" data-rename="' + i + '" value="' + esc(p.name) + '" maxlength="14" aria-label="Name">'
-                  : '<span class="nm">' + esc(p.name) + '</span>')
-          + '<span class="ct" style="color:' + (cc.total && cc.confirmed===cc.total ? "var(--green)" : "inherit") + '">'
-          + (cc.total ? cc.confirmed + " of " + cc.total + " ready" : "Nothing today") + '</span></button>';
-      }).join("") + '</div>'
-    + '<div class="vtabs">'
-    +   '<button class="vtab' + (viewMode!=="sched"?" on":"") + '" data-view="today">Today</button>'
-    +   '<button class="vtab' + (viewMode==="sched"?" on":"") + '" data-view="sched">Schedule</button>'
-    + '</div>';
-
-    if(viewMode === "sched"){ app.innerHTML = html + scheduleHTML(); wire(); return; }
-
-    html += '<div class="daybar">'
-    +   '<div class="daynav">'
-    +     '<button class="arrow" id="prev" aria-label="Previous day">&#9664;</button>'
-    +     '<div class="daytxt"><div class="dow">' + DOW[view.getDay()] + '</div>'
-    +       '<div class="dnum">' + MON[view.getMonth()] + " " + view.getDate()
-    +         (dk===todayK ? " &middot; Today" : dk===tomorrowK ? " &middot; Tomorrow" : "") + '</div></div>'
-    +     '<button class="arrow" id="next" aria-label="Next day">&#9654;</button>'
-    +   '</div>'
-    +   '<div class="cue"><b>' + cue[0] + '</b><span>' + cue[1] + '</span></div>'
-    +   '<div class="meter"><i class="m-green" style="width:' + pctG + '%"></i><i class="m-amber" style="width:' + pctA + '%"></i></div>'
-    +   '<div class="tally"><span>' + c.packed + ' packed</span><span class="done">' + c.confirmed + ' of ' + c.total + ' confirmed</span></div>'
-    + '</div>';
-
-    var list = forDay(k.id, view);
-    html += '<div class="list">';
-    if(!list.length){
-      html += '<div class="empty"><b>Nothing on this day</b>Add the first thing below and pick which days it belongs on.</div>';
-    } else {
-      list.forEach(function(it){
-        var s = stat(dk,it.id);
-        var label = s===0 ? "Not yet" : s===1 ? "Packed" : "Got it";
-        var glyph = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
-        html += '<div class="row s' + s + '" data-id="' + it.id + '" role="button" tabindex="0" aria-label="' + esc(it.name) + ', ' + label + '">'
-          + '<span class="sweep"></span><span class="mark">' + glyph + '</span>'
-          + '<span class="nm"><b>' + esc(it.name) + '</b><span class="when">' + when(it) + '</span></span>'
-          + (edit ? '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button>'
-                  : '<span class="state">' + label + '</span>')
-          + '</div>';
-      });
+  /* ---------- markup builders ---------- */
+  function mastheadHTML(){
+    return '<div class="mast"><h1 class="word">Pack<span>ed</span><small>School &amp; sports checklist</small></h1>'
+      + '<button class="ghost' + (edit?" on":"") + '" id="editBtn">' + (edit?"Done":"Edit list") + '</button></div>';
+  }
+  function syncHTML(){
+    return '<div class="sync ' + (busy?"busy":netOk?"ok":"off") + '"><i></i><span>'
+      + (busy ? "Syncing…" : netOk ? ("Synced · " + esc(code)) : "Offline — saved on this device")
+      + '</span><button class="ghost ic" id="soundBtn" aria-label="Sound on or off">' + (soundOn?"🔊":"🔇") + '</button>'
+      + '<button class="ghost" id="switchCode">Change code</button></div>';
+  }
+  function vtabsHTML(){
+    return '<div class="vtabs"><button class="vtab' + (viewMode!=="sched"?" on":"") + '" data-view="today">Today</button>'
+      + '<button class="vtab' + (viewMode==="sched"?" on":"") + '" data-view="sched">Schedule</button></div>';
+  }
+  function kidsTabsHTML(){
+    return '<div class="kids" role="tablist">' + state.kids.map(function(p,i){
+      var cc = counts(p.id, view);
+      return '<button class="kid" role="tab" aria-selected="' + (i===kid) + '" data-kid="' + i + '" style="--tint:' + tint(i) + '">'
+        + (edit ? '<input type="text" data-rename="' + i + '" value="' + esc(p.name) + '" maxlength="14" aria-label="Name">'
+                : '<span class="nm">' + esc(p.name) + '</span>')
+        + '<span class="ct" style="color:' + (cc.total && cc.confirmed===cc.total ? "var(--green)" : "inherit") + '">'
+        + (cc.total ? cc.confirmed + " of " + cc.total + " ready" : "Nothing today") + '</span></button>';
+    }).join("") + '</div>';
+  }
+  function daybarHTML(inner){
+    var dk = key(view);
+    return '<div class="daybar"><div class="daynav">'
+      + '<button class="arrow" id="prev" aria-label="Previous day">&#9664;</button>'
+      + '<div class="daytxt"><div class="dow">' + DOW[view.getDay()] + '</div>'
+      + '<div class="dnum">' + MON[view.getMonth()] + " " + view.getDate() + dowLabel(dk) + '</div></div>'
+      + '<button class="arrow" id="next" aria-label="Next day">&#9654;</button></div>'
+      + inner + '</div>';
+  }
+  function cueHTML(kidId, shared){
+    var cue = timeCue(key(view));
+    var done = shared ? allComplete(view) : dayComplete(kidId, view);
+    if(done) cue = shared ? ["All set","Everyone's packed. Out the door."] : ["All set","Everything's confirmed. Out the door."];
+    return '<div class="cue"><b>' + cue[0] + '</b><span>' + cue[1] + '</span></div>';
+  }
+  function progressHTML(kidId){
+    var c = counts(kidId, view);
+    var pctA = c.total ? (c.packed/c.total*100) : 0, pctG = c.total ? (c.confirmed/c.total*100) : 0;
+    return '<div class="meter"><i class="m-green" style="width:' + pctG + '%"></i><i class="m-amber" style="width:' + pctA + '%"></i></div>'
+      + '<div class="tally"><span>' + c.packed + ' packed</span><span class="done">' + c.confirmed + ' of ' + c.total + ' confirmed</span></div>';
+  }
+  function rowHTML(it, dk){
+    var s = stat(dk,it.id);
+    var label = s===0 ? "Not yet" : s===1 ? "Packed" : "Got it";
+    var glyph = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
+    return '<div class="row s' + s + '" data-id="' + it.id + '" role="button" tabindex="0" aria-label="' + esc(it.name) + ', ' + label + '">'
+      + '<span class="sweep"></span><span class="mark">' + glyph + '</span>'
+      + '<span class="nm"><b>' + esc(it.name) + '</b><span class="when">' + when(it) + '</span></span>'
+      + (edit ? '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button>'
+              : '<span class="state">' + label + '</span>')
+      + '</div>';
+  }
+  function listHTML(kidId, dk){
+    var list = forDay(kidId, view);
+    if(!list.length) return '<div class="list"><div class="empty"><b>Nothing on this day</b>Add the first thing below and pick which days it belongs on.</div></div>';
+    return '<div class="list">' + list.map(function(it){ return rowHTML(it, dk); }).join("") + '</div>';
+  }
+  function addFormHTML(ki){
+    var k = state.kids[ki];
+    var h = '<button class="add" data-addkid="' + ki + '">+ Add something</button>';
+    if(formOpen && formKid === ki){
+      h += '<div class="form open">'
+        + '<div class="lab">What is it?</div>'
+        + '<input type="text" class="ti" id="fname" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
+        + '<div class="lab" style="margin-top:16px">When does ' + esc(k.name) + ' need it?</div>'
+        + '<div class="seg">'
+        +   '<button class="chip" data-type="daily" aria-pressed="' + (draft.type==="daily") + '">Every day</button>'
+        +   '<button class="chip" data-type="weekly" aria-pressed="' + (draft.type==="weekly") + '">Certain days</button>'
+        +   '<button class="chip" data-type="once" aria-pressed="' + (draft.type==="once") + '">Just this once</button>'
+        + '</div>'
+        + '<div class="days' + (draft.type==="weekly"?" open":"") + '">'
+        +   DOW1.map(function(d,i){ return '<button class="chip" data-day="' + i + '" aria-pressed="' + (draft.days.indexOf(i)!==-1) + '" aria-label="' + DOW[i] + '">' + d + '</button>'; }).join("")
+        + '</div>'
+        + '<div class="actions"><button class="btn" data-cancel="1">Cancel</button><button class="btn primary" id="saveItem">Add to list</button></div>'
+        + '</div>';
     }
+    return h;
+  }
+  function toolsHTML(ki){
+    return '<div class="tools' + (edit?" open":"") + '"><button class="ghost" data-clearday="' + ki + '">Clear this day\'s checks</button></div>';
+  }
+  function noteTodayHTML(){
+    return '<div class="note">Tap an item to move it forward: red &rarr; amber (packed) &rarr; green (got it). Tap once more to start over.<br>Changes reach the other phones within a few seconds.</div>';
+  }
+  function schedNoteHTML(){
+    return '<div class="note">These repeat every week. One-off things (“just this once”) are added from the Today view.</div>';
+  }
+  function colheadHTML(ki){
+    var p = state.kids[ki], c = counts(p.id, view);
+    var ready = c.total ? (c.confirmed + " of " + c.total + " ready") : "Nothing today";
+    return '<div class="colhead">'
+      + (edit ? '<input type="text" data-rename="' + ki + '" value="' + esc(p.name) + '" maxlength="14" aria-label="Name">'
+              : '<span class="colnm">' + esc(p.name) + '</span>')
+      + '<span class="colct"' + (c.total && c.confirmed===c.total ? ' style="color:var(--green)"' : '') + '>' + ready + '</span></div>';
+  }
+
+  /* ---------- tap (with sound + celebration) ---------- */
+  function tap(row){
+    if(edit) return;
+    var dk = key(view), id = row.dataset.id, it = state.items[id];
+    if(!it) return;
+    var wasAll = allComplete(view), wasKid = dayComplete(it.kid, view);
+    var s = (stat(dk,id) + 1) % 3;
+    setStat(dk,id,s);
+    play(s===1 ? "pack" : s===2 ? "got" : "reset");
+    try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
+    row.className = "row s" + s + " pop";
+    row.querySelector(".mark").innerHTML = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
+    var st = row.querySelector(".state");
+    if(st) st.textContent = s===0 ? "Not yet" : s===1 ? "Packed" : "Got it";
+    if(allComplete(view) && !wasAll){ setTimeout(function(){ play("allDone"); celebrate(); }, 170); }
+    else if(dayComplete(it.kid, view) && !wasKid){ setTimeout(function(){ play("kidDone"); }, 170); }
+    setTimeout(render, 330);
+  }
+
+  /* ---------- render ---------- */
+  function render(){ if(isWide()) renderWide(); else renderNarrow(); }
+
+  function renderNarrow(){
+    var k = state.kids[kid], dk = key(view);
+    document.documentElement.style.setProperty("--accent", tint(kid));
+    var html = mastheadHTML() + syncHTML() + kidsTabsHTML() + vtabsHTML();
+    if(viewMode === "sched"){ app.innerHTML = html + scheduleHTML(kid) + schedNoteHTML(); wire(); return; }
+    html += daybarHTML(cueHTML(k.id, false) + progressHTML(k.id));
+    html += listHTML(k.id, dk) + addFormHTML(kid) + toolsHTML(kid) + noteTodayHTML();
+    app.innerHTML = html; wire();
+  }
+
+  function renderWide(){
+    document.documentElement.style.setProperty("--accent", "var(--kid-a)");
+    var dk = key(view);
+    var html = mastheadHTML() + syncHTML() + vtabsHTML();
+    if(viewMode !== "sched") html += daybarHTML(cueHTML(null, true));
+    html += '<div class="cols">';
+    state.kids.forEach(function(p, ki){
+      html += '<div class="col" style="--accent:' + tint(ki) + '">' + colheadHTML(ki)
+        + (viewMode === "sched"
+            ? scheduleHTML(ki)
+            : progressHTML(p.id) + listHTML(p.id, dk) + addFormHTML(ki) + toolsHTML(ki))
+        + '</div>';
+    });
     html += '</div>';
-
-    html += '<button class="add" id="addBtn">+ Add something</button>'
-      + '<div class="form' + (formOpen?" open":"") + '" id="form">'
-      +   '<div class="lab">What is it?</div>'
-      +   '<input type="text" class="ti" id="fname" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
-      +   '<div class="lab" style="margin-top:16px">When does ' + esc(k.name) + ' need it?</div>'
-      +   '<div class="seg">'
-      +     '<button class="chip" data-type="daily" aria-pressed="' + (draft.type==="daily") + '">Every day</button>'
-      +     '<button class="chip" data-type="weekly" aria-pressed="' + (draft.type==="weekly") + '">Certain days</button>'
-      +     '<button class="chip" data-type="once" aria-pressed="' + (draft.type==="once") + '">Just this once</button>'
-      +   '</div>'
-      +   '<div class="days' + (draft.type==="weekly"?" open":"") + '">'
-      +     DOW1.map(function(d,i){
-              return '<button class="chip" data-day="' + i + '" aria-pressed="' + (draft.days.indexOf(i)!==-1) + '" aria-label="' + DOW[i] + '">' + d + '</button>';
-            }).join("")
-      +   '</div>'
-      +   '<div class="actions"><button class="btn" id="cancel">Cancel</button><button class="btn primary" id="saveItem">Add to list</button></div>'
-      + '</div>'
-      + '<div class="tools' + (edit?" open":"") + '"><button class="ghost" id="clearDay">Clear this day\'s checks</button></div>'
-      + '<div class="note">Tap an item to move it forward: red &rarr; amber (packed) &rarr; green (got it). Tap once more to start over.<br>Changes reach the other phones within a few seconds.</div>';
-
-    app.innerHTML = html;
-    wire();
+    html += viewMode === "sched" ? schedNoteHTML() : noteTodayHTML();
+    app.innerHTML = html; wire();
   }
 
   /* ---------- schedule screen ---------- */
-  function scheduleHTML(){
-    var k = state.kids[kid], items = schedItems(k.id);
+  function scardHTML(it){
+    var days = itemDays(it);
+    return '<div class="scard"><div class="scard-top"><span class="snm">' + esc(it.name) + '</span>'
+      + '<span class="swhen">' + when(it) + '</span>'
+      + '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button></div>'
+      + '<div class="drow">'
+      + DOW1.map(function(dl,di){ var on = days.indexOf(di) !== -1;
+          return '<button class="dtog' + (on?" on":"") + '" data-sday="' + it.id + ':' + di + '" aria-pressed="' + on + '" aria-label="' + DOW[di] + '">' + dl + '</button>';
+        }).join("")
+      + '</div></div>';
+  }
+  function scheduleHTML(ki){
+    var k = state.kids[ki], items = schedItems(k.id);
+    if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+    var dd = schedDraft[ki].days;
     var h = '<div class="schedhead"><b>' + esc(k.name) + '’s week</b>'
       + '<span>Tap the days each thing is needed. Changes sync to every phone.</span></div>';
     h += '<div class="list">';
-    if(!items.length){
-      h += '<div class="empty"><b>No regular items yet</b>Add ' + esc(k.name) + '’s first one below.</div>';
-    } else {
-      items.forEach(function(it){
-        var days = itemDays(it);
-        h += '<div class="scard">'
-          + '<div class="scard-top"><span class="snm">' + esc(it.name) + '</span>'
-          +   '<span class="swhen">' + when(it) + '</span>'
-          +   '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button></div>'
-          + '<div class="drow">'
-          +   DOW1.map(function(dl,di){
-                var on = days.indexOf(di) !== -1;
-                return '<button class="dtog' + (on?" on":"") + '" data-sday="' + it.id + ':' + di
-                  + '" aria-pressed="' + on + '" aria-label="' + DOW[di] + '">' + dl + '</button>';
-              }).join("")
-          + '</div></div>';
-      });
-    }
+    if(!items.length) h += '<div class="empty"><b>No regular items yet</b>Add ' + esc(k.name) + '’s first one below.</div>';
+    else items.forEach(function(it){ h += scardHTML(it); });
     h += '</div>';
     h += '<div class="form open">'
       + '<div class="lab">Add a regular item for ' + esc(k.name) + '</div>'
-      + '<input type="text" class="ti" id="sname" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
+      + '<input type="text" class="ti" id="sname-' + ki + '" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
       + '<div class="lab" style="margin-top:16px">Which days?</div>'
       + '<div class="days open">'
-      +   DOW1.map(function(dl,di){
-            return '<button class="chip" data-sdraft="' + di + '" aria-pressed="' + (schedDraft.days.indexOf(di)!==-1)
-              + '" aria-label="' + DOW[di] + '">' + dl + '</button>';
-          }).join("")
+      +   DOW1.map(function(dl,di){ return '<button class="chip" data-sdraft="' + ki + ':' + di + '" aria-pressed="' + (dd.indexOf(di)!==-1) + '" aria-label="' + DOW[di] + '">' + dl + '</button>'; }).join("")
       + '</div>'
-      + '<div class="actions"><button class="btn primary" id="schedAddBtn">Add to schedule</button></div>'
-      + '</div>'
-      + '<div class="note">These repeat every week. One-off things (“just this once”) are added from the Today view.</div>';
+      + '<div class="actions"><button class="btn primary" data-schedadd="' + ki + '">Add to schedule</button></div>'
+      + '</div>';
     return h;
   }
-  function addSchedItem(){
-    var f = document.getElementById("sname"), name = f.value.trim();
+  function addSchedItem(ki){
+    var f = byId("sname-" + ki), name = f.value.trim();
     if(!name){ f.focus(); f.style.borderColor = "var(--red)"; return; }
-    var days = schedDraft.days.slice().sort(function(a,b){ return a-b; });
+    if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+    var days = schedDraft[ki].days.slice().sort(function(a,b){ return a-b; });
     if(!days.length) days = [1,2,3,4,5];
     var id = uid(), type = days.length === 7 ? "daily" : "weekly";
-    state.items[id] = { id:id, kid:state.kids[kid].id, name:name, type:type, days: type==="daily"?[]:days, t:now() };
-    schedDraft = { days: days.slice() };
+    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, t:now() };
+    schedDraft[ki] = { days: days.slice() };
     touched(); render();
   }
 
   /* ---------- events ---------- */
   function wire(){
-    app.querySelectorAll("[data-view]").forEach(function(b){
-      b.addEventListener("click", function(){ viewMode = b.dataset.view; formOpen = false; edit = false; render(); });
+    q("[data-view]").forEach(function(b){
+      on(b,"click",function(){ viewMode = b.dataset.view; formOpen = false; edit = false; render(); });
     });
-    app.querySelectorAll("[data-sday]").forEach(function(b){
-      b.addEventListener("click", function(){
-        var p = b.dataset.sday.split(":"); toggleItemDay(p[0], +p[1]); render();
+    q("[data-sday]").forEach(function(b){
+      on(b,"click",function(){ var p = b.dataset.sday.split(":"); toggleItemDay(p[0], +p[1]); render(); });
+    });
+    q("[data-sdraft]").forEach(function(b){
+      on(b,"click",function(){
+        var p = b.dataset.sdraft.split(":"), ki = +p[0], d = +p[1];
+        if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+        var arr = schedDraft[ki].days, i = arr.indexOf(d);
+        if(i === -1) arr.push(d); else arr.splice(i,1);
+        var el = byId("sname-"+ki), t = el ? el.value : ""; render();
+        var el2 = byId("sname-"+ki); if(el2) el2.value = t;
       });
     });
-    app.querySelectorAll("[data-sdraft]").forEach(function(b){
-      b.addEventListener("click", function(){
-        var d = +b.dataset.sdraft, i = schedDraft.days.indexOf(d);
-        if(i === -1) schedDraft.days.push(d); else schedDraft.days.splice(i,1);
-        var t = document.getElementById("sname").value; render();
-        document.getElementById("sname").value = t;
-      });
-    });
-    var sAdd = document.getElementById("schedAddBtn");
-    if(sAdd) sAdd.addEventListener("click", addSchedItem);
-    var sn = document.getElementById("sname");
-    if(sn) sn.addEventListener("keydown", function(e){ if(e.key === "Enter") addSchedItem(); });
+    q("[data-schedadd]").forEach(function(b){ on(b,"click",function(){ addSchedItem(+b.dataset.schedadd); }); });
+    q('[id^="sname-"]').forEach(function(inp){ on(inp,"keydown",function(e){ if(e.key === "Enter") addSchedItem(+inp.id.split("-")[1]); }); });
 
-    app.querySelectorAll("[data-kid]").forEach(function(b){
-      b.addEventListener("click", function(e){
-        if(e.target.matches("[data-rename]")) return;
-        kid = +b.dataset.kid; formOpen = false; render();
-      });
+    q("[data-kid]").forEach(function(b){
+      on(b,"click",function(e){ if(e.target.matches("[data-rename]")) return; kid = +b.dataset.kid; formOpen = false; render(); });
     });
-    app.querySelectorAll("[data-rename]").forEach(function(inp){
-      inp.addEventListener("change", function(){
+    q("[data-rename]").forEach(function(inp){
+      on(inp,"change",function(){
         var i = +inp.dataset.rename, v = inp.value.trim();
         state.kids[i] = { id:state.kids[i].id, name:v || NAMES[i] || ("Kid "+(i+1)), t:now() };
         touched(); render();
       });
     });
-    document.getElementById("editBtn").addEventListener("click", function(){ edit = !edit; render(); });
-    document.getElementById("prev").addEventListener("click", function(){ view = shift(view,-1); render(); });
-    document.getElementById("next").addEventListener("click", function(){ view = shift(view,1); render(); });
-    document.getElementById("switchCode").addEventListener("click", function(){
+    on(byId("editBtn"),"click",function(){ edit = !edit; render(); });
+    on(byId("prev"),"click",function(){ view = shift(view,-1); render(); });
+    on(byId("next"),"click",function(){ view = shift(view,1); render(); });
+    on(byId("switchCode"),"click",function(){
       clearInterval(timer); code = null; state = null;
       local(CODEKEY,""); local(CACHE,""); codeScreen();
     });
-
-    app.querySelectorAll(".row").forEach(function(row){
-      function go(){
-        if(edit) return;
-        var dk = key(view), id = row.dataset.id, s = (stat(dk,id)+1) % 3;
-        setStat(dk,id,s);
-        try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
-        row.className = "row s" + s + " pop";
-        row.querySelector(".mark").innerHTML = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
-        var st = row.querySelector(".state");
-        if(st) st.textContent = s===0 ? "Not yet" : s===1 ? "Packed" : "Got it";
-        setTimeout(render, 330);
-      }
-      row.addEventListener("click", function(e){ if(!e.target.matches("[data-del]")) go(); });
-      row.addEventListener("keydown", function(e){
-        if(e.key === " " || e.key === "Enter"){ e.preventDefault(); go(); }
-      });
+    on(byId("soundBtn"),"click",function(){
+      soundOn = !soundOn; local("packed:sound", soundOn ? "on" : "off");
+      if(soundOn) play("got");
+      render();
     });
-    app.querySelectorAll("[data-del]").forEach(function(b){
-      b.addEventListener("click", function(e){
+
+    q(".row").forEach(function(row){
+      on(row,"click",function(e){ if(!e.target.matches("[data-del]")) tap(row); });
+      on(row,"keydown",function(e){ if(e.key === " " || e.key === "Enter"){ e.preventDefault(); tap(row); } });
+    });
+    q("[data-del]").forEach(function(b){
+      on(b,"click",function(e){
         e.stopPropagation();
         var it = state.items[b.dataset.del];
         if(it){ state.items[it.id] = { id:it.id, kid:it.kid, name:it.name, type:it.type, days:it.days, date:it.date, del:true, t:now() }; }
@@ -657,48 +795,47 @@
       });
     });
 
-    document.getElementById("addBtn").addEventListener("click", function(){
-      formOpen = !formOpen;
-      if(formOpen && draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
-      render();
-      if(formOpen){ var f = document.getElementById("fname"); if(f) f.focus(); }
+    q("[data-addkid]").forEach(function(b){
+      on(b,"click",function(){
+        var ki = +b.dataset.addkid;
+        if(formOpen && formKid === ki){ formOpen = false; }
+        else { formOpen = true; formKid = ki; if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()]; }
+        render();
+        if(formOpen){ var f = byId("fname"); if(f) f.focus(); }
+      });
     });
-    app.querySelectorAll("[data-type]").forEach(function(b){
-      b.addEventListener("click", function(){
+    q("[data-type]").forEach(function(b){
+      on(b,"click",function(){
         draft.type = b.dataset.type;
         if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
-        var t = document.getElementById("fname").value; render();
-        document.getElementById("fname").value = t;
+        var t = byId("fname").value; render(); byId("fname").value = t;
       });
     });
-    app.querySelectorAll("[data-day]").forEach(function(b){
-      b.addEventListener("click", function(){
+    q("[data-day]").forEach(function(b){
+      on(b,"click",function(){
         var d = +b.dataset.day, i = draft.days.indexOf(d);
         if(i === -1) draft.days.push(d); else draft.days.splice(i,1);
-        var t = document.getElementById("fname").value; render();
-        document.getElementById("fname").value = t;
+        var t = byId("fname").value; render(); byId("fname").value = t;
       });
     });
-    var cancel = document.getElementById("cancel");
-    if(cancel) cancel.addEventListener("click", function(){ formOpen = false; render(); });
-    var saveBtn = document.getElementById("saveItem");
-    if(saveBtn) saveBtn.addEventListener("click", addItem);
-    var f = document.getElementById("fname");
-    if(f) f.addEventListener("keydown", function(e){ if(e.key === "Enter") addItem(); });
-    var cd = document.getElementById("clearDay");
-    if(cd) cd.addEventListener("click", function(){
-      var dk = key(view);
-      forDay(state.kids[kid].id, view).forEach(function(it){ setStat(dk, it.id, 0); });
-      render();
+    on(app.querySelector("[data-cancel]"),"click",function(){ formOpen = false; render(); });
+    on(byId("saveItem"),"click",addItem);
+    on(byId("fname"),"keydown",function(e){ if(e.key === "Enter") addItem(); });
+    q("[data-clearday]").forEach(function(b){
+      on(b,"click",function(){
+        var ki = +b.dataset.clearday, dk = key(view);
+        forDay(state.kids[ki].id, view).forEach(function(it){ setStat(dk, it.id, 0); });
+        render();
+      });
     });
   }
 
   function addItem(){
-    var f = document.getElementById("fname"), name = f.value.trim();
+    var f = byId("fname"), name = f.value.trim();
     if(!name){ f.focus(); f.style.borderColor = "var(--red)"; return; }
     if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
     var id = uid();
-    var it = { id:id, kid:state.kids[kid].id, name:name, type:draft.type, days:draft.days.slice(), t:now() };
+    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), t:now() };
     if(draft.type === "once") it.date = key(view);
     state.items[id] = it;
     draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [] };
