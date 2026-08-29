@@ -189,7 +189,12 @@
   .schedhead{margin:2px 0 12px;display:flex;flex-direction:column;gap:3px}
   .schedhead b{font-family:var(--display);font-size:19px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
   .schedhead span{font-size:12.5px;color:var(--muted)}
-  .scard{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px}
+  .scard{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px 13px;transition:box-shadow .15s,border-color .15s}
+  .scard.dragging{box-shadow:0 12px 30px rgba(0,0,0,.5);border-color:var(--accent);opacity:.97}
+  .drag{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:transparent;
+    color:var(--muted);font-size:16px;line-height:1;cursor:grab;touch-action:none;display:grid;place-items:center;
+    letter-spacing:2px;user-select:none;-webkit-user-select:none}
+  .drag:active{cursor:grabbing;color:var(--text);border-color:var(--muted)}
   .scard-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
   .snm{flex:1;min-width:0;font-weight:600;overflow-wrap:anywhere}
   .swhen{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;flex:none}
@@ -281,6 +286,7 @@
 
   var state = null, code = null, kid = 0, view = new Date(), edit = false;
   var viewMode = "today", schedDraft = {}, formKid = 0;
+  var dragging = false, drag = null;
   var formOpen = false, draft = {type:"daily", days:[]};
   var dirty = false, netOk = true, busy = false, lastSync = 0, clock = 0, timer = null;
   var app = document.getElementById("app");
@@ -389,7 +395,7 @@
       console.error(e);
     }
     busy = false;
-    render();
+    if(!dragging) render();
   }
   var nudge = null;
   function touched(){
@@ -409,9 +415,11 @@
     if(it.type === "weekly") return it.days.indexOf(d.getDay()) !== -1;
     return it.date === key(d);
   }
+  function ordVal(it){ return (typeof it.order === "number") ? it.order : 1e9; }
+  function byOrder(a,b){ var d = ordVal(a) - ordVal(b); return d || a.name.localeCompare(b.name); }
+  function nextOrder(kidId){ var m = -1; live().forEach(function(it){ if(it.kid===kidId && ordVal(it) < 1e9 && it.order > m) m = it.order; }); return m + 1; }
   function forDay(kidId,d){
-    return live().filter(function(it){ return it.kid === kidId && due(it,d); })
-      .sort(function(a,b){ return a.name.localeCompare(b.name); });
+    return live().filter(function(it){ return it.kid === kidId && due(it,d); }).sort(byOrder);
   }
   function stat(dk,id){ var e = state.status[dk] && state.status[dk][id]; return e ? (e.v||0) : 0; }
   function setStat(dk,id,v){
@@ -442,7 +450,7 @@
     days = days.slice().sort(function(a,b){ return a-b; });
     var type = days.length === 7 ? "daily" : "weekly";
     state.items[id] = { id:it.id, kid:it.kid, name:it.name, type:type,
-      days: type === "daily" ? [] : days, date:it.date, emoji:it.emoji, t:now() };
+      days: type === "daily" ? [] : days, date:it.date, emoji:it.emoji, order:it.order, t:now() };
     touched();
   }
   function toggleItemDay(id, d){
@@ -452,8 +460,37 @@
     setItemDays(id, days);
   }
   function schedItems(kidId){
-    return live().filter(function(it){ return it.kid === kidId && it.type !== "once"; })
-      .sort(function(a,b){ return a.name.localeCompare(b.name); });
+    return live().filter(function(it){ return it.kid === kidId && it.type !== "once"; }).sort(byOrder);
+  }
+  function cloneItem(it, patch){ var o = {}, k; for(k in it) o[k] = it[k]; for(k in patch) o[k] = patch[k]; return o; }
+  function reorder(kidId, id, target){
+    var items = schedItems(kidId), from = -1, i;
+    for(i=0;i<items.length;i++){ if(items[i].id === id){ from = i; break; } }
+    if(from < 0) return;
+    var moved = items.splice(from,1)[0];
+    target = Math.max(0, Math.min(target, items.length));
+    items.splice(target, 0, moved);
+    items.forEach(function(it, idx){ state.items[it.id] = cloneItem(state.items[it.id], { order:idx, t:now() }); });
+    touched();
+  }
+  function dragMove(e){
+    if(!drag) return;
+    if(e.cancelable) e.preventDefault();
+    drag.card.style.transform = "translateY(" + (e.clientY - drag.startY) + "px)";
+  }
+  function dragEnd(e){
+    if(!drag) return;
+    var d = drag; drag = null;
+    document.removeEventListener("pointermove", dragMove);
+    document.removeEventListener("pointerup", dragEnd);
+    document.removeEventListener("pointercancel", dragEnd);
+    d.card.classList.remove("dragging"); d.card.style.transform = ""; d.card.style.zIndex = "";
+    var y = e.clientY, idx = 0;
+    for(var i=0;i<d.cards.length;i++){ var r = d.cards[i].getBoundingClientRect(); if(y > r.top + r.height/2) idx = i + 1; }
+    var target = (idx > d.origIdx) ? idx - 1 : idx;
+    dragging = false;
+    reorder(d.kidId, d.id, target);
+    render();
   }
 
   /* ---------- screens ---------- */
@@ -532,35 +569,40 @@
     else src.connect(g);
     g.connect(master); src.start(t); src.stop(t + dur);
   }
-  // bubble pop — a tiny click + a quick rising "bloop"
-  function popSound(){
-    noiseBurst({ dur:0.02, vol:0.12, filter:"bandpass", freq:1100, Q:0.8 });
-    blip({ type:"sine", f0:240, f1:680, sweep:0.055, dur:0.13, vol:0.30 });
-    blip({ type:"sine", f0:680, f1:1300, sweep:0.05, dur:0.07, vol:0.10, at:0.004 });
+  // Each kid gets a pitch offset so you can tell across the room whose item
+  // just went off: Atticus at the base pitch, Linus a musical third higher.
+  var KID_PITCH = [1.0, 1.26];
+  function pitch(ki){ return KID_PITCH[ki] || 1; }
+  // bubble pop — a tiny click + a quick rising "bloop", pitched per kid
+  function popSound(ki){
+    var m = pitch(ki);
+    noiseBurst({ dur:0.02, vol:0.11, filter:"bandpass", freq:1100*m, Q:0.8 });
+    blip({ type:"sine", f0:240*m, f1:680*m, sweep:0.055, dur:0.13, vol:0.30 });
+    blip({ type:"sine", f0:680*m, f1:1300*m, sweep:0.05, dur:0.07, vol:0.10, at:0.004 });
   }
-  // "got it" — a warm struck bell: pure sine partials, fast strike, long smooth ring
-  function doneSound(){
-    var f = 1046.5; // C6
-    [[1.0,0.26,1.20],[2.0,0.11,0.85],[3.0,0.05,0.55],[4.2,0.03,0.38]].forEach(function(p){
+  // "got it" — a warm struck bell (A5 fundamental), pure sine partials, long ring, pitched per kid
+  function doneSound(ki){
+    var f = 880 * pitch(ki);
+    [[1.0,0.24,1.30],[2.0,0.09,0.90],[3.0,0.04,0.55],[4.2,0.022,0.4]].forEach(function(p){
       blip({ type:"sine", f0:f*p[0], vol:p[1], dur:p[2], attack:0.004 });
     });
   }
-  // undo — soft downward bloop
-  function resetSound(){ blip({ type:"sine", f0:420, f1:170, sweep:0.11, dur:0.15, vol:0.12 }); }
+  // undo — soft downward bloop, pitched per kid
+  function resetSound(ki){ var m = pitch(ki); blip({ type:"sine", f0:420*m, f1:170*m, sweep:0.11, dur:0.15, vol:0.11 }); }
   // one kid finished their list — quick major arpeggio with a sparkle tail
   function kidDoneSound(){
-    [523,659,784,1047].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.22, vol:0.17, at:i*0.085 }); });
-    blip({ type:"sine", f0:1568, dur:0.5, vol:0.07, at:0.36 });
+    [523,659,784,1047].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.22, vol:0.16, at:i*0.085 }); });
+    blip({ type:"sine", f0:1568, dur:0.5, vol:0.06, at:0.36 });
   }
-  // everyone packed — full celebratory fanfare: whoosh, rising run, final chord, sparkles
+  // everyone packed — full celebratory fanfare: whoosh, rising run, warm sine chord, sparkles
   function allDoneSound(){
-    noiseBurst({ dur:0.35, vol:0.05, filter:"highpass", freq:1800 });
-    [523,659,784,1047,1319,1568].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.26, vol:0.17, at:i*0.085 }); });
-    [523,659,784,1047].forEach(function(f){ blip({ type:"triangle", f0:f, dur:0.8, vol:0.14, at:0.56 }); });
-    [2093,2349,2637].forEach(function(f,i){ blip({ type:"sine", f0:f, dur:0.4, vol:0.05, at:0.6 + i*0.12 }); });
+    noiseBurst({ dur:0.35, vol:0.04, filter:"highpass", freq:1800 });
+    [523,659,784,1047,1319,1568].forEach(function(f,i){ blip({ type:"triangle", f0:f, dur:0.26, vol:0.15, at:i*0.085 }); });
+    [523,659,784,1047].forEach(function(f){ blip({ type:"sine", f0:f, dur:0.95, vol:0.14, at:0.56 }); });   // warm sustained chord
+    [2093,2349,2637].forEach(function(f,i){ blip({ type:"sine", f0:f, dur:0.4, vol:0.045, at:0.62 + i*0.12 }); });
   }
   var SND = { pack:popSound, got:doneSound, reset:resetSound, kidDone:kidDoneSound, allDone:allDoneSound };
-  function play(name){ if(!soundOn) return; if(!audioCtx()) return; (SND[name] || function(){})(); }
+  function play(name, ki){ if(!soundOn) return; if(!audioCtx()) return; var fn = SND[name]; if(fn) fn(ki || 0); }
   function celebrate(){
     try{
       if(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -786,7 +828,8 @@
     var wasAll = allComplete(view), wasKid = dayComplete(it.kid, view);
     var s = (stat(dk,id) + 1) % 3;
     setStat(dk,id,s);
-    play(s===1 ? "pack" : s===2 ? "got" : "reset");
+    var ki = (state.kids[1] && state.kids[1].id === it.kid) ? 1 : 0;
+    play(s===1 ? "pack" : s===2 ? "got" : "reset", ki);
     try{ if(navigator.vibrate) navigator.vibrate(12); }catch(e){}
     row.className = "row s" + s + " pop";
     row.querySelector(".mark").innerHTML = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
@@ -837,7 +880,9 @@
   /* ---------- schedule screen ---------- */
   function scardHTML(it){
     var days = itemDays(it);
-    return '<div class="scard"><div class="scard-top"><span class="snm"><span class="ico">' + itemEmoji(it) + '</span> ' + esc(it.name) + '</span>'
+    return '<div class="scard" data-sid="' + it.id + '"><div class="scard-top">'
+      + '<span class="drag" data-drag="' + it.id + '" aria-label="Drag to reorder">⠇</span>'
+      + '<span class="snm"><span class="ico">' + itemEmoji(it) + '</span> ' + esc(it.name) + '</span>'
       + '<span class="swhen">' + when(it) + '</span>'
       + '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button></div>'
       + '<div class="drow">'
@@ -875,7 +920,7 @@
     var days = schedDraft[ki].days.slice().sort(function(a,b){ return a-b; });
     if(!days.length) days = [1,2,3,4,5];
     var id = uid(), type = days.length === 7 ? "daily" : "weekly";
-    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, emoji:schedDraft[ki].emoji || guessEmoji(name), t:now() };
+    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, emoji:schedDraft[ki].emoji || guessEmoji(name), order:nextOrder(state.kids[ki].id), t:now() };
     schedDraft[ki] = { days: days.slice() };
     touched(); render();
   }
@@ -899,6 +944,18 @@
       });
     });
     q("[data-schedadd]").forEach(function(b){ on(b,"click",function(){ addSchedItem(+b.dataset.schedadd); }); });
+    q("[data-drag]").forEach(function(h){
+      on(h,"pointerdown",function(e){
+        var card = h.closest(".scard"); if(!card) return;
+        e.preventDefault();
+        var id = h.dataset.drag, listEl = card.parentNode, cards = [].slice.call(listEl.querySelectorAll(".scard"));
+        drag = { id:id, card:card, cards:cards, origIdx:cards.indexOf(card), startY:e.clientY, kidId: state.items[id].kid };
+        dragging = true; card.classList.add("dragging"); card.style.zIndex = "5";
+        document.addEventListener("pointermove", dragMove);
+        document.addEventListener("pointerup", dragEnd);
+        document.addEventListener("pointercancel", dragEnd);
+      });
+    });
     q("[data-emojipick]").forEach(function(b){
       on(b,"click",function(){
         var raw = b.dataset.emojipick, bar = raw.indexOf("|"), who = raw.slice(0,bar), em = raw.slice(bar+1);
@@ -993,7 +1050,7 @@
     if(!name){ f.focus(); f.style.borderColor = "var(--red)"; return; }
     if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
     var id = uid();
-    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), emoji:draft.emoji || guessEmoji(name), t:now() };
+    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), emoji:draft.emoji || guessEmoji(name), order:nextOrder(state.kids[formKid].id), t:now() };
     if(draft.type === "once") it.date = key(view);
     state.items[id] = it;
     draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [] };
