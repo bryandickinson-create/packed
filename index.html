@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
 <title>Packed — school &amp; sports checklist</title>
 <meta name="theme-color" content="#121824">
 <meta name="mobile-web-app-capable" content="yes">
@@ -205,6 +205,23 @@
   .dtog:hover{border-color:var(--muted)}
   .dtog.on{background:var(--accent);border-color:var(--accent);color:#101622}
 
+  /* ---------- activity headings ---------- */
+  .cathead{display:flex;align-items:center;gap:8px;font-family:var(--display);font-weight:700;font-size:13.5px;
+    letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:16px 2px 8px}
+  .list .cathead:first-child{margin-top:0}
+  .catx{margin-left:auto;font-family:var(--body);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    font-weight:600;color:var(--muted);background:transparent;border:1px solid var(--line);border-radius:99px;
+    padding:4px 10px;cursor:pointer}
+  .catx:hover{border-color:var(--red);color:var(--red)}
+  .emptycat{color:var(--muted);font-size:13px;padding:0 2px 4px}
+  .addcat{display:flex;gap:8px;margin:6px 0 4px}
+  .addcat .ti{flex:1}
+  .addcat .btn{flex:none;width:auto;padding:12px 18px}
+  .catrow{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .catlab{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:600;flex:none}
+  .catsel{flex:1;background:#131A26;border:1px solid var(--line);color:var(--text);border-radius:8px;
+    padding:8px 10px;font-family:var(--body);font-size:14px}
+
   .gate{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:22px 20px;margin-top:8px}
   .gate h2{font-family:var(--display);font-size:26px;font-weight:700;text-transform:uppercase;
     letter-spacing:.03em;margin:0 0 10px}
@@ -306,23 +323,24 @@
 
   /* ---------- state ---------- */
   function blank(){
-    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{}, done:{} };
+    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{}, done:{}, cats:{} };
   }
   function seed(){
-    var s = blank(), t = now();
-    function put(k,n,ty,ds){ var id=uid(); s.items[id]={id:id,kid:k,name:n,type:ty,days:ds||[],t:t}; }
+    var s = blank(), t = now(), n = 0;
+    function put(k,name,ty,ds,cat){ var id=uid(); s.items[id]={id:id,kid:k,name:name,type:ty,days:ds||[],cat:cat,emoji:guessEmoji(name),order:n++,t:t}; }
     ["a","b"].forEach(function(k){
-      put(k,"Water bottle","daily"); put(k,"Lunch","daily");
-      put(k,"Homework folder","weekly",[1,2,3,4,5]);
+      put(k,"Water bottle","daily",[],"School"); put(k,"Lunch","daily",[],"School");
+      put(k,"Homework folder","weekly",[1,2,3,4,5],"School");
     });
-    put("a","Tennis racquet","weekly",[1]);
-    put("b","Soccer cleats","weekly",[2,4]);
+    put("a","Tennis racquet","weekly",[1],"Tennis");
+    put("b","Soccer cleats","weekly",[2,4],"Soccer");
+    s.cats = { a:["School","Tennis"], b:["School","Soccer"] };
     return s;
   }
   /* Last edit wins, field by field, so two phones tapping at once don't
      wipe each other out — only the specific thing each one touched moves. */
   function merge(a,b){
-    var out = { kids:[], items:{}, status:{}, done:{} };
+    var out = { kids:[], items:{}, status:{}, done:{}, cats:{} };
     for(var i=0;i<2;i++){
       var ka = (a.kids&&a.kids[i]) || {id:i?"b":"a",name:NAMES[i]||("Kid "+(i+1)),t:0};
       var kb = (b.kids&&b.kids[i]) || ka;
@@ -344,6 +362,8 @@
       });
     });
     [a.done,b.done].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.done[k] = 1; }); });
+    [a.cats,b.cats].forEach(function(src){ for(var kk in (src||{})){ out.cats[kk] = out.cats[kk] || [];
+      (src[kk]||[]).forEach(function(c){ if(out.cats[kk].indexOf(c) === -1) out.cats[kk].push(c); }); } });
     return out;
   }
   function tidy(){
@@ -356,6 +376,7 @@
       else if(!it.del && it.type === "once" && it.date < today) delete state.items[id];
     });
     if(!state.done) state.done = {};
+    if(!state.cats) state.cats = {};
     var dfloor = key(shift(startOfToday(),-120));   // keep ~4 months of completed-day history
     Object.keys(state.done).forEach(function(k){ if(k < dfloor) delete state.done[k]; });
   }
@@ -463,8 +484,8 @@
     return live().filter(function(it){ return it.kid === kidId && it.type !== "once"; }).sort(byOrder);
   }
   function cloneItem(it, patch){ var o = {}, k; for(k in it) o[k] = it[k]; for(k in patch) o[k] = patch[k]; return o; }
-  function reorder(kidId, id, target){
-    var items = schedItems(kidId), from = -1, i;
+  function reorderInCat(kidId, cat, id, target){
+    var items = schedItems(kidId).filter(function(it){ return itemCat(it)===cat; }), from = -1, i;
     for(i=0;i<items.length;i++){ if(items[i].id === id){ from = i; break; } }
     if(from < 0) return;
     var moved = items.splice(from,1)[0];
@@ -489,7 +510,7 @@
     for(var i=0;i<d.cards.length;i++){ var r = d.cards[i].getBoundingClientRect(); if(y > r.top + r.height/2) idx = i + 1; }
     var target = (idx > d.origIdx) ? idx - 1 : idx;
     dragging = false;
-    reorder(d.kidId, d.id, target);
+    reorderInCat(d.kidId, itemCat(state.items[d.id]), d.id, target);
     render();
   }
 
@@ -688,6 +709,33 @@
       + '</div>';
   }
 
+  /* ---------- activities (categories) ---------- */
+  var DEFAULT_CAT = "School";
+  function itemCat(it){ return it.cat || DEFAULT_CAT; }
+  function catsFor(kidId){
+    var out = [], has = {};
+    function add(c){ if(c && !has[c]){ has[c] = 1; out.push(c); } }
+    if(state.cats && state.cats[kidId]) state.cats[kidId].forEach(add);
+    add(DEFAULT_CAT);
+    live().forEach(function(it){ if(it.kid === kidId) add(itemCat(it)); });   // surface any category items already use
+    return out;
+  }
+  function materializeCats(kidId){ if(!state.cats) state.cats = {}; if(!state.cats[kidId]) state.cats[kidId] = catsFor(kidId); return state.cats[kidId]; }
+  function addCat(kidId, name){
+    name = String(name||"").trim(); if(!name) return null;
+    var list = materializeCats(kidId);
+    var existing = null;
+    list.forEach(function(c){ if(c.toLowerCase() === name.toLowerCase()) existing = c; });
+    if(existing) return existing;
+    list.push(name); touched(); return name;
+  }
+  function removeCat(kidId, name){
+    var list = materializeCats(kidId), i = list.indexOf(name);
+    if(list.length <= 1) return;                     // keep at least one activity
+    if(i !== -1){ list.splice(i,1); touched(); }
+    live().forEach(function(it){ if(it.kid === kidId && itemCat(it) === name) state.items[it.id] = cloneItem(state.items[it.id], { cat:list[0], t:now() }); });
+  }
+
   /* ---------- streaks ---------- */
   var MILESTONES = [3,5,7,10,14,21,30,50,75,100];
   function markDone(dk){ if(!state.done) state.done = {}; if(!state.done[dk]){ state.done[dk] = 1; touched(); } }
@@ -786,15 +834,26 @@
   function listHTML(kidId, dk){
     var list = forDay(kidId, view);
     if(!list.length) return '<div class="list"><div class="empty"><b>Nothing on this day</b>Add the first thing below and pick which days it belongs on.</div></div>';
-    return '<div class="list">' + list.map(function(it){ return rowHTML(it, dk); }).join("") + '</div>';
+    var cats = catsFor(kidId).filter(function(cat){ return list.some(function(it){ return itemCat(it)===cat; }); });
+    var multi = cats.length > 1;
+    var html = '<div class="list">';
+    cats.forEach(function(cat){
+      var items = list.filter(function(it){ return itemCat(it)===cat; });
+      if(multi) html += '<div class="cathead">' + esc(cat) + '</div>';
+      items.forEach(function(it){ html += rowHTML(it, dk); });
+    });
+    return html + '</div>';
   }
   function addFormHTML(ki){
-    var k = state.kids[ki];
+    var k = state.kids[ki], cats = catsFor(k.id);
+    if(!draft.cat || cats.indexOf(draft.cat) === -1) draft.cat = cats[0];
     var h = '<button class="add" data-addkid="' + ki + '">+ Add something</button>';
     if(formOpen && formKid === ki){
       h += '<div class="form open">'
         + '<div class="lab">What is it?</div>'
         + '<input type="text" class="ti" id="fname" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
+        + '<div class="lab" style="margin-top:16px">Activity</div>'
+        + '<div class="seg">' + cats.map(function(cat){ return '<button class="chip" data-tcat="' + encodeURIComponent(cat) + '" aria-pressed="' + (draft.cat===cat) + '">' + esc(cat) + '</button>'; }).join("") + '</div>'
         + '<div class="lab" style="margin-top:16px">When does ' + esc(k.name) + ' need it?</div>'
         + '<div class="seg">'
         +   '<button class="chip" data-type="daily" aria-pressed="' + (draft.type==="daily") + '">Every day</button>'
@@ -897,21 +956,35 @@
       + DOW1.map(function(dl,di){ var on = days.indexOf(di) !== -1;
           return '<button class="dtog' + (on?" on":"") + '" data-sday="' + it.id + ':' + di + '" aria-pressed="' + on + '" aria-label="' + DOW[di] + '">' + dl + '</button>';
         }).join("")
-      + '</div></div>';
+      + '</div>'
+      + (edit ? '<div class="catrow"><span class="catlab">Activity</span><select class="catsel" data-setcat="' + it.id + '">'
+          + catsFor(it.kid).map(function(c){ return '<option' + (itemCat(it)===c?" selected":"") + '>' + esc(c) + '</option>'; }).join("")
+          + '</select></div>' : '')
+      + '</div>';
   }
   function scheduleHTML(ki){
-    var k = state.kids[ki], items = schedItems(k.id);
+    var k = state.kids[ki], kidId = k.id;
     if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
-    var dd = schedDraft[ki].days;
+    var dd = schedDraft[ki].days, cats = catsFor(kidId);
+    if(!schedDraft[ki].cat || cats.indexOf(schedDraft[ki].cat) === -1) schedDraft[ki].cat = cats[0];
     var h = '<div class="schedhead"><b>' + esc(k.name) + '’s week</b>'
-      + '<span>Tap the days each thing is needed. Changes sync to every phone.</span></div>';
-    h += '<div class="list">';
-    if(!items.length) h += '<div class="empty"><b>No regular items yet</b>Add ' + esc(k.name) + '’s first one below.</div>';
-    else items.forEach(function(it){ h += scardHTML(it); });
-    h += '</div>';
+      + '<span>Tap the days each thing is needed. Drag ⠇ to reorder. Changes sync.</span></div>';
+    cats.forEach(function(cat){
+      var items = schedItems(kidId).filter(function(it){ return itemCat(it) === cat; });
+      h += '<div class="cathead">' + esc(cat)
+        + (edit && cats.length > 1 ? '<button class="catx" data-catdel="' + ki + '|' + encodeURIComponent(cat) + '">Remove</button>' : '') + '</div>';
+      if(!items.length) h += '<div class="emptycat">Nothing here yet.</div>';
+      else { h += '<div class="list" data-cat="' + encodeURIComponent(cat) + '">'; items.forEach(function(it){ h += scardHTML(it); }); h += '</div>'; }
+    });
+    if(edit){
+      h += '<div class="addcat"><input type="text" class="ti" id="newcat-' + ki + '" placeholder="New activity (e.g. Piano)" autocomplete="off" maxlength="20">'
+        + '<button class="btn primary" data-addcat="' + ki + '">Add</button></div>';
+    }
     h += '<div class="form open">'
       + '<div class="lab">Add a regular item for ' + esc(k.name) + '</div>'
-      + '<input type="text" class="ti" id="sname-' + ki + '" placeholder="Tennis racquet" autocomplete="off" maxlength="40">'
+      + '<input type="text" class="ti" id="sname-' + ki + '" placeholder="Shin guards" autocomplete="off" maxlength="40">'
+      + '<div class="lab" style="margin-top:16px">Activity</div>'
+      + '<div class="seg">' + cats.map(function(cat){ return '<button class="chip" data-scat="' + ki + '|' + encodeURIComponent(cat) + '" aria-pressed="' + (schedDraft[ki].cat===cat) + '">' + esc(cat) + '</button>'; }).join("") + '</div>'
       + '<div class="lab" style="margin-top:16px">Which days?</div>'
       + '<div class="days open">'
       +   DOW1.map(function(dl,di){ return '<button class="chip" data-sdraft="' + ki + ':' + di + '" aria-pressed="' + (dd.indexOf(di)!==-1) + '" aria-label="' + DOW[di] + '">' + dl + '</button>'; }).join("")
@@ -928,8 +1001,8 @@
     var days = schedDraft[ki].days.slice().sort(function(a,b){ return a-b; });
     if(!days.length) days = [1,2,3,4,5];
     var id = uid(), type = days.length === 7 ? "daily" : "weekly";
-    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, emoji:schedDraft[ki].emoji || guessEmoji(name), order:nextOrder(state.kids[ki].id), t:now() };
-    schedDraft[ki] = { days: days.slice() };
+    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, cat:schedDraft[ki].cat || DEFAULT_CAT, emoji:schedDraft[ki].emoji || guessEmoji(name), order:nextOrder(state.kids[ki].id), t:now() };
+    schedDraft[ki] = { days: days.slice(), cat: schedDraft[ki].cat };
     touched(); render();
   }
 
@@ -982,6 +1055,53 @@
     });
     q('[id^="sname-"]').forEach(function(inp){ on(inp,"keydown",function(e){ if(e.key === "Enter") addSchedItem(+inp.id.split("-")[1]); }); });
 
+    q("[data-tcat]").forEach(function(b){
+      on(b,"click",function(){
+        draft.cat = decodeURIComponent(b.dataset.tcat);
+        var t = byId("fname") ? byId("fname").value : ""; render();
+        if(byId("fname")) byId("fname").value = t;
+      });
+    });
+    q("[data-scat]").forEach(function(b){
+      on(b,"click",function(){
+        var p = b.dataset.scat.split("|"), ki = +p[0], cat = decodeURIComponent(p[1]);
+        if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+        schedDraft[ki].cat = cat;
+        var el = byId("sname-"+ki), v = el ? el.value : ""; render();
+        var el2 = byId("sname-"+ki); if(el2) el2.value = v;
+      });
+    });
+    q("[data-addcat]").forEach(function(b){
+      on(b,"click",function(){
+        var ki = +b.dataset.addcat, inp = byId("newcat-"+ki), name = inp ? inp.value.trim() : "";
+        if(!name){ if(inp){ inp.focus(); inp.style.borderColor = "var(--red)"; } return; }
+        var added = addCat(state.kids[ki].id, name);
+        if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+        schedDraft[ki].cat = added;
+        render();
+      });
+    });
+    q("[id^='newcat-']").forEach(function(inp){
+      on(inp,"keydown",function(e){
+        if(e.key !== "Enter") return;
+        var ki = +inp.id.split("-")[1], name = inp.value.trim(); if(!name) return;
+        addCat(state.kids[ki].id, name);
+        if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+        schedDraft[ki].cat = name; render();
+      });
+    });
+    q("[data-catdel]").forEach(function(b){
+      on(b,"click",function(){
+        var p = b.dataset.catdel.split("|"), ki = +p[0], cat = decodeURIComponent(p[1]);
+        removeCat(state.kids[ki].id, cat); render();
+      });
+    });
+    q("[data-setcat]").forEach(function(sel){
+      on(sel,"change",function(){
+        var id = sel.dataset.setcat, it = state.items[id];
+        if(it){ state.items[id] = cloneItem(it, { cat:sel.value, order:nextOrder(it.kid), t:now() }); touched(); render(); }
+      });
+    });
     q("[data-kid]").forEach(function(b){
       on(b,"click",function(e){ if(e.target.matches("[data-rename]")) return; kid = +b.dataset.kid; formOpen = false; render(); });
     });
@@ -1058,10 +1178,10 @@
     if(!name){ f.focus(); f.style.borderColor = "var(--red)"; return; }
     if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
     var id = uid();
-    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), emoji:draft.emoji || guessEmoji(name), order:nextOrder(state.kids[formKid].id), t:now() };
+    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), cat:draft.cat || DEFAULT_CAT, emoji:draft.emoji || guessEmoji(name), order:nextOrder(state.kids[formKid].id), t:now() };
     if(draft.type === "once") it.date = key(view);
     state.items[id] = it;
-    draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [] };
+    draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [], cat:draft.cat };
     formOpen = false;
     touched(); render();
   }
