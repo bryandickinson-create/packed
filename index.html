@@ -275,6 +275,44 @@
     animation:fall linear forwards}
   @keyframes fall{to{transform:translateY(104vh) rotate(540deg);opacity:.85}}
 
+  /* ---------- daily game ---------- */
+  .gamebtn{width:100%;margin-bottom:14px;background:linear-gradient(90deg,var(--kid-a),var(--kid-b));color:#0b0f18;
+    border:none;border-radius:var(--r);padding:14px;font-family:var(--display);font-weight:700;font-size:17px;
+    letter-spacing:.05em;text-transform:uppercase;cursor:pointer;box-shadow:0 8px 24px rgba(0,0,0,.35);
+    animation:gpulse 2.2s ease-in-out infinite}
+  @keyframes gpulse{50%{filter:brightness(1.14)}}
+  .game{position:fixed;inset:0;z-index:100;--gaccent:var(--kid-a);
+    background:radial-gradient(130% 120% at 50% 0%, #1c2946, var(--ink));display:flex;flex-direction:column;overflow:hidden}
+  .gquit{position:absolute;top:calc(12px + env(safe-area-inset-top,0px));right:14px;z-index:6;width:40px;height:40px;
+    border-radius:50%;border:1px solid var(--line);background:rgba(0,0,0,.28);color:var(--text);font-size:17px;cursor:pointer}
+  .gcard{margin:auto;max-width:430px;padding:30px 26px;text-align:center;display:flex;flex-direction:column;gap:16px;align-items:center}
+  .gtitle{font-family:var(--display);font-weight:700;font-size:34px;line-height:1.05;text-transform:uppercase;
+    letter-spacing:.02em;color:var(--gaccent)}
+  .gsub{color:var(--muted);font-size:15px;max-width:330px;line-height:1.5}
+  .gemoji{font-size:44px;letter-spacing:8px}
+  .gbig{background:var(--gaccent);color:#101622;border:none;border-radius:14px;padding:16px 36px;font-family:var(--display);
+    font-weight:700;font-size:22px;letter-spacing:.08em;text-transform:uppercase;cursor:pointer;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+  .gbig.alt{background:transparent;color:var(--text);border:1px solid var(--line);box-shadow:none}
+  .gbtns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+  .gcount{margin:auto;font-family:var(--display);font-weight:700;font-size:120px;color:var(--gaccent);animation:gpop .7s ease}
+  @keyframes gpop{0%{transform:scale(.4);opacity:0}45%{transform:scale(1.12);opacity:1}100%{transform:scale(1)}}
+  .ghud{display:flex;align-items:center;justify-content:space-between;font-family:var(--display);font-weight:700;
+    padding:calc(12px + env(safe-area-inset-top,0px)) 22px 10px}
+  .gscore{font-size:30px;color:var(--gaccent);min-width:64px}
+  .gname{font-size:15px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .gtime{font-size:30px;color:var(--text);min-width:64px;text-align:right}
+  .gfield{position:relative;flex:1;overflow:hidden;touch-action:none}
+  .gobj{position:absolute;top:0;left:0;width:52px;height:52px;background:none;border:none;padding:0;cursor:pointer;
+    will-change:transform;touch-action:none;-webkit-user-select:none;user-select:none}
+  .gobj>span{display:block;font-size:40px;line-height:1.3;pointer-events:none}
+  .gobj.gold>span{filter:drop-shadow(0 0 8px gold)}
+  .gobj.pop>span{animation:gcatch .2s ease forwards}
+  @keyframes gcatch{to{transform:scale(2);opacity:0}}
+  .gscores{display:flex;gap:30px;justify-content:center;margin:4px 0}
+  .gscores>div{display:flex;flex-direction:column;gap:4px}
+  .gscores span{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  .gscores b{font-family:var(--display);font-size:48px;line-height:1}
+
   @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
 </head>
@@ -323,7 +361,7 @@
 
   /* ---------- state ---------- */
   function blank(){
-    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{}, done:{}, cats:{} };
+    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{}, done:{}, cats:{}, reward:{} };
   }
   function seed(){
     var s = blank(), t = now(), n = 0;
@@ -334,13 +372,13 @@
     });
     put("a","Tennis racquet","weekly",[1],"Tennis");
     put("b","Soccer cleats","weekly",[2,4],"Soccer");
-    s.cats = { a:["School","Tennis"], b:["School","Soccer"] };
+    s.cats = { a:["School","Tennis","Soccer"], b:["School","Tennis","Soccer"] };
     return s;
   }
   /* Last edit wins, field by field, so two phones tapping at once don't
      wipe each other out — only the specific thing each one touched moves. */
   function merge(a,b){
-    var out = { kids:[], items:{}, status:{}, done:{}, cats:{} };
+    var out = { kids:[], items:{}, status:{}, done:{}, cats:{}, reward:{} };
     for(var i=0;i<2;i++){
       var ka = (a.kids&&a.kids[i]) || {id:i?"b":"a",name:NAMES[i]||("Kid "+(i+1)),t:0};
       var kb = (b.kids&&b.kids[i]) || ka;
@@ -364,6 +402,7 @@
     [a.done,b.done].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.done[k] = 1; }); });
     [a.cats,b.cats].forEach(function(src){ for(var kk in (src||{})){ out.cats[kk] = out.cats[kk] || [];
       (src[kk]||[]).forEach(function(c){ if(out.cats[kk].indexOf(c) === -1) out.cats[kk].push(c); }); } });
+    [a.reward,b.reward].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.reward[k] = 1; }); });
     return out;
   }
   function tidy(){
@@ -377,8 +416,19 @@
     });
     if(!state.done) state.done = {};
     if(!state.cats) state.cats = {};
+    if(!state.reward) state.reward = {};
+    // Every kid gets the three base activities (once); keeps any they've already used.
+    state.kids.forEach(function(p){
+      if(!state.cats[p.id]){
+        var base = ["School","Tennis","Soccer"], has = { School:1, Tennis:1, Soccer:1 };
+        live().forEach(function(it){ if(it.kid===p.id){ var c = itemCat(it); if(!has[c]){ has[c]=1; base.push(c); } } });
+        state.cats[p.id] = base;
+      }
+    });
     var dfloor = key(shift(startOfToday(),-120));   // keep ~4 months of completed-day history
     Object.keys(state.done).forEach(function(k){ if(k < dfloor) delete state.done[k]; });
+    var rfloor = key(shift(startOfToday(),-30));
+    Object.keys(state.reward).forEach(function(k){ if(k < rfloor) delete state.reward[k]; });
   }
 
   /* ---------- network ---------- */
@@ -738,6 +788,7 @@
 
   /* ---------- streaks ---------- */
   var MILESTONES = [3,5,7,10,14,21,30,50,75,100];
+  var DEADLINE_MIN = 7*60 + 40;   // finish by 7:40am to unlock the game
   function markDone(dk){ if(!state.done) state.done = {}; if(!state.done[dk]){ state.done[dk] = 1; touched(); } }
   // Streaks count weekdays only — weekends often have nothing to pack, so they
   // neither break the streak nor need to be completed.
@@ -835,7 +886,7 @@
     var list = forDay(kidId, view);
     if(!list.length) return '<div class="list"><div class="empty"><b>Nothing on this day</b>Add the first thing below and pick which days it belongs on.</div></div>';
     var cats = catsFor(kidId).filter(function(cat){ return list.some(function(it){ return itemCat(it)===cat; }); });
-    var multi = cats.length > 1;
+    var multi = catsFor(kidId).length > 1;   // group on the daily page too whenever the kid has multiple activities
     var html = '<div class="list">';
     cats.forEach(function(cat){
       var items = list.filter(function(it){ return itemCat(it)===cat; });
@@ -907,6 +958,11 @@
       var streak = currentStreak();
       setTimeout(function(){ play("allDone"); celebrate(); }, 170);
       if(MILESTONES.indexOf(streak) !== -1) setTimeout(function(){ rewardToast("🏅 " + streak + "-day streak!"); }, 560);
+      var td = key(startOfToday());
+      if(key(view) === td && !state.reward[td]){
+        var mins = new Date().getHours()*60 + new Date().getMinutes();
+        if(mins <= DEADLINE_MIN){ state.reward[td] = 1; touched(); setTimeout(function(){ rewardToast("🎮 Game unlocked!"); }, 950); }
+      }
     }
     else if(dayComplete(it.kid, view) && !wasKid){ setTimeout(function(){ play("kidDone"); }, 170); }
     setTimeout(render, 330);
@@ -921,6 +977,7 @@
     var html = mastheadHTML() + syncHTML() + kidsTabsHTML() + vtabsHTML();
     if(viewMode === "sched"){ app.innerHTML = html + scheduleHTML(kid) + schedNoteHTML(); wire(); return; }
     html += streakHTML();
+    html += gameBannerHTML();
     html += daybarHTML(cueHTML(k.id, false) + progressHTML(k.id));
     html += listHTML(k.id, dk) + addFormHTML(kid) + toolsHTML(kid) + noteTodayHTML();
     app.innerHTML = html; wire();
@@ -930,7 +987,7 @@
     document.documentElement.style.setProperty("--accent", "var(--kid-a)");
     var dk = key(view);
     var html = mastheadHTML() + syncHTML() + vtabsHTML();
-    if(viewMode !== "sched"){ html += streakHTML(); html += daybarHTML(cueHTML(null, true)); }
+    if(viewMode !== "sched"){ html += streakHTML(); html += gameBannerHTML(); html += daybarHTML(cueHTML(null, true)); }
     html += '<div class="cols">';
     state.kids.forEach(function(p, ki){
       html += '<div class="col" style="--accent:' + tint(ki) + '">' + colheadHTML(ki)
@@ -1124,6 +1181,7 @@
       if(soundOn) play("got");
       render();
     });
+    on(byId("playGame"),"click",openGame);
 
     q(".row").forEach(function(row){
       on(row,"click",function(e){ if(!e.target.matches("[data-del]")) tap(row); });
@@ -1184,6 +1242,122 @@
     draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [], cat:draft.cat };
     formOpen = false;
     touched(); render();
+  }
+
+  /* ---------- daily game reward (Star Catcher) ---------- */
+  var GAME = null;
+  var CATCH = ["⭐","🍎","🍌","🍓","🍊","🍇","🎈"];
+  function gameUnlocked(){ return !!(state.reward && state.reward[key(startOfToday())]); }
+  function gameBannerHTML(){ return gameUnlocked() ? '<button class="gamebtn" id="playGame">🎮 Play today’s game — you earned it!</button>' : ""; }
+
+  function openGame(){
+    if(GAME) return;
+    var root = document.createElement("div"); root.className = "game"; document.body.appendChild(root);
+    GAME = { root:root, turn:0, scores:[0,0], objs:[], raf:0, running:false, last:0, spawn:0, timeLeft:0, turnScore:0 };
+    gameIntro();
+  }
+  function closeGame(){
+    if(!GAME) return;
+    if(GAME.raf) cancelAnimationFrame(GAME.raf);
+    if(GAME.root && GAME.root.parentNode) GAME.root.parentNode.removeChild(GAME.root);
+    GAME = null; render();
+  }
+  function wireGame(){
+    var r = GAME.root, b;
+    if((b = r.querySelector("[data-gquit]"))) b.addEventListener("click", closeGame);
+    if((b = r.querySelector("[data-gstart]"))) b.addEventListener("click", function(){ gameCountdown(3); });
+    if((b = r.querySelector("[data-gagain]"))) b.addEventListener("click", function(){ GAME.turn=0; GAME.scores=[0,0]; gameIntro(); });
+    if((b = r.querySelector("[data-gdone]"))) b.addEventListener("click", closeGame);
+  }
+  function gameIntro(){
+    GAME.root.style.setProperty("--gaccent", GAME.turn===0 ? "var(--kid-a)" : "var(--kid-b)");
+    GAME.root.innerHTML =
+      '<button class="gquit" data-gquit aria-label="Quit">✕</button>'
+      + '<div class="gcard">'
+      + '<div class="gtitle">' + esc(state.kids[GAME.turn].name) + '’s turn</div>'
+      + '<div class="gsub">Tap the falling treats to catch them. 40 seconds — catch as many as you can!</div>'
+      + '<div class="gemoji">⭐🍎🎈</div>'
+      + '<button class="gbig" data-gstart>Start</button>'
+      + '</div>';
+    wireGame();
+  }
+  function gameCountdown(n){
+    if(!GAME) return;
+    if(n === 0){ GAME.root.innerHTML = '<div class="gcount">GO!</div>'; setTimeout(gamePlay, 500); return; }
+    GAME.root.innerHTML = '<div class="gcount">' + n + '</div>';
+    setTimeout(function(){ gameCountdown(n-1); }, 750);
+  }
+  function gamePlay(){
+    if(!GAME) return;
+    GAME.objs = []; GAME.timeLeft = 40; GAME.spawn = 0; GAME.running = true; GAME.turnScore = 0;
+    GAME.root.innerHTML =
+      '<div class="ghud"><span class="gscore">0</span><span class="gname">' + esc(state.kids[GAME.turn].name) + '</span><span class="gtime">40</span></div>'
+      + '<div class="gfield" id="gfield"></div>'
+      + '<button class="gquit" data-gquit aria-label="Quit">✕</button>';
+    GAME.field = GAME.root.querySelector("#gfield");
+    GAME.scoreEl = GAME.root.querySelector(".gscore");
+    GAME.timeEl = GAME.root.querySelector(".gtime");
+    wireGame();
+    GAME.last = performance.now();
+    GAME.raf = requestAnimationFrame(gameTick);
+  }
+  function gameTick(ts){
+    if(!GAME || !GAME.running) return;
+    var dt = Math.min(0.05, (ts - GAME.last)/1000); GAME.last = ts;
+    GAME.timeLeft -= dt;
+    if(GAME.timeLeft <= 0){ GAME.timeEl.textContent = "0"; endTurn(); return; }
+    GAME.timeEl.textContent = Math.ceil(GAME.timeLeft);
+    GAME.spawn -= dt;
+    var rate = Math.max(0.28, 0.6 - (40 - GAME.timeLeft) * 0.008);
+    if(GAME.spawn <= 0){ spawnObj(); GAME.spawn = rate; }
+    var h = GAME.field.clientHeight, i, o;
+    for(i=GAME.objs.length-1;i>=0;i--){
+      o = GAME.objs[i]; o.y += o.vy * dt;
+      o.el.style.transform = "translate(" + o.x + "px," + o.y + "px)";
+      if(o.y > h + 50){ if(o.el.parentNode) o.el.parentNode.removeChild(o.el); GAME.objs.splice(i,1); }
+    }
+    GAME.raf = requestAnimationFrame(gameTick);
+  }
+  function spawnObj(){
+    var w = GAME.field.clientWidth, gold = Math.random() < 0.12;
+    var em = gold ? "🌟" : CATCH[Math.floor(Math.random()*CATCH.length)];
+    var el = document.createElement("button");
+    el.className = "gobj" + (gold ? " gold" : ""); el.innerHTML = "<span>" + em + "</span>";
+    var x = 8 + Math.random() * Math.max(20, w - 60);
+    var o = { el:el, x:x, y:-46, vy: 130 + Math.random()*90 + (40 - GAME.timeLeft)*3.2, val: gold ? 3 : 1 };
+    el.style.transform = "translate(" + x + "px,-46px)";
+    el.addEventListener("pointerdown", function(e){ e.preventDefault(); catchObj(o); });
+    GAME.field.appendChild(el); GAME.objs.push(o);
+  }
+  function catchObj(o){
+    if(!o.el.parentNode) return;
+    var idx = GAME.objs.indexOf(o); if(idx >= 0) GAME.objs.splice(idx,1);
+    GAME.turnScore += o.val; GAME.scoreEl.textContent = GAME.turnScore;
+    o.el.classList.add("pop");
+    try{ if(navigator.vibrate) navigator.vibrate(8); }catch(e){}
+    play("pack", GAME.turn);
+    var el = o.el; setTimeout(function(){ if(el.parentNode) el.parentNode.removeChild(el); }, 200);
+  }
+  function endTurn(){
+    GAME.running = false; if(GAME.raf) cancelAnimationFrame(GAME.raf);
+    GAME.scores[GAME.turn] = GAME.turnScore;
+    if(GAME.turn === 0){ GAME.turn = 1; gameIntro(); }
+    else gameResults();
+  }
+  function gameResults(){
+    var a = GAME.scores[0], b = GAME.scores[1], na = esc(state.kids[0].name), nb = esc(state.kids[1].name);
+    var msg = a === b ? "It’s a tie! 🤝" : ((a > b ? na : nb) + " wins! 🏆");
+    GAME.root.style.setProperty("--gaccent", a >= b ? "var(--kid-a)" : "var(--kid-b)");
+    play("allDone"); celebrate();
+    GAME.root.innerHTML =
+      '<button class="gquit" data-gquit aria-label="Quit">✕</button>'
+      + '<div class="gcard">'
+      + '<div class="gtitle">' + msg + '</div>'
+      + '<div class="gscores"><div><span>' + na + '</span><b style="color:var(--kid-a)">' + a + '</b></div>'
+      + '<div><span>' + nb + '</span><b style="color:var(--kid-b)">' + b + '</b></div></div>'
+      + '<div class="gbtns"><button class="gbig alt" data-gagain>Play again</button><button class="gbig" data-gdone>Done</button></div>'
+      + '</div>';
+    wireGame();
   }
 
   /* ---------- boot ---------- */
