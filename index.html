@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Packed">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23121824'/%3E%3Crect x='14' y='13' width='36' height='9' rx='4.5' fill='%23F2564B'/%3E%3Crect x='14' y='27' width='36' height='9' rx='4.5' fill='%23F6A821'/%3E%3Crect x='14' y='41' width='36' height='9' rx='4.5' fill='%233FCF6E'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -912,6 +914,16 @@
     if(!code) codeScreen(); else boot();
   }
 })();
+</script>
+<script>
+/* Register the service worker for offline use + instant loads.
+   The worker fetches index.html network-first, so deploys still appear
+   on the next online load without any cache-busting tricks. */
+if("serviceWorker" in navigator){
+  window.addEventListener("load", function(){
+    navigator.serviceWorker.register("sw.js").catch(function(){});
+  });
+}
 </script>
 </body>
 </html>
