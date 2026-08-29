@@ -234,6 +234,19 @@
     .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;align-items:start}
   }
 
+  /* ---------- streak + reward ---------- */
+  .streak{display:flex;align-items:baseline;gap:10px;background:var(--panel);border:1px solid var(--line);
+    border-radius:var(--r);padding:11px 15px;margin-bottom:14px}
+  .sk-main{font-family:var(--display);font-weight:700;font-size:16px;letter-spacing:.03em;
+    text-transform:uppercase;color:var(--text)}
+  .sk-sub{margin-left:auto;font-size:11px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;color:var(--muted)}
+  .toast{position:fixed;left:50%;top:calc(18px + env(safe-area-inset-top,0px));transform:translate(-50%,-24px);
+    background:var(--accent);color:#101622;font-family:var(--display);font-weight:700;font-size:16px;
+    letter-spacing:.04em;text-transform:uppercase;padding:12px 22px;border-radius:99px;
+    box-shadow:0 10px 34px rgba(0,0,0,.45);opacity:0;transition:opacity .35s,transform .35s;
+    z-index:70;pointer-events:none;max-width:90vw;text-align:center}
+  .toast.show{opacity:1;transform:translate(-50%,0)}
+
   /* ---------- celebration ---------- */
   .confetti{position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:60}
   .confetti i{position:absolute;top:-14px;width:9px;height:14px;border-radius:2px;opacity:.95;
@@ -287,7 +300,7 @@
 
   /* ---------- state ---------- */
   function blank(){
-    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{} };
+    return { kids:[{id:"a",name:NAMES[0],t:0},{id:"b",name:NAMES[1],t:0}], items:{}, status:{}, done:{} };
   }
   function seed(){
     var s = blank(), t = now();
@@ -303,7 +316,7 @@
   /* Last edit wins, field by field, so two phones tapping at once don't
      wipe each other out — only the specific thing each one touched moves. */
   function merge(a,b){
-    var out = { kids:[], items:{}, status:{} };
+    var out = { kids:[], items:{}, status:{}, done:{} };
     for(var i=0;i<2;i++){
       var ka = (a.kids&&a.kids[i]) || {id:i?"b":"a",name:NAMES[i]||("Kid "+(i+1)),t:0};
       var kb = (b.kids&&b.kids[i]) || ka;
@@ -324,6 +337,7 @@
         });
       });
     });
+    [a.done,b.done].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.done[k] = 1; }); });
     return out;
   }
   function tidy(){
@@ -335,6 +349,9 @@
       if(it.del && (it.t||0) < old) delete state.items[id];
       else if(!it.del && it.type === "once" && it.date < today) delete state.items[id];
     });
+    if(!state.done) state.done = {};
+    var dfloor = key(shift(startOfToday(),-120));   // keep ~4 months of completed-day history
+    Object.keys(state.done).forEach(function(k){ if(k < dfloor) delete state.done[k]; });
   }
 
   /* ---------- network ---------- */
@@ -628,6 +645,37 @@
       + '</div>';
   }
 
+  /* ---------- streaks ---------- */
+  var MILESTONES = [3,5,7,10,14,21,30,50,75,100];
+  function markDone(dk){ if(!state.done) state.done = {}; if(!state.done[dk]){ state.done[dk] = 1; touched(); } }
+  function isNextDay(a,b){ var d = new Date(a + "T00:00:00"); d.setDate(d.getDate()+1); return key(d) === b; }
+  function currentStreak(){
+    var done = state.done || {}, d = startOfToday(), n = 0;
+    if(!done[key(d)]){ d = shift(d,-1); if(!done[key(d)]) return 0; }  // today or (if not yet) yesterday
+    while(done[key(d)]){ n++; d = shift(d,-1); }
+    return n;
+  }
+  function bestStreak(){
+    var days = Object.keys(state.done || {}).sort(), best = 0, run = 0, prev = null;
+    days.forEach(function(k){ run = (prev && isNextDay(prev,k)) ? run+1 : 1; if(run > best) best = run; prev = k; });
+    return best;
+  }
+  function streakHTML(){
+    var s = currentStreak(), b = bestStreak();
+    if(!s && !b) return "";
+    var main = s > 0 ? ("🔥 " + s + (s===1 ? " day packed!" : " days in a row!")) : "✨ Pack it all to start a streak";
+    return '<div class="streak"><span class="sk-main">' + main + '</span>'
+      + (b > 1 ? '<span class="sk-sub">Best ' + b + '</span>' : '') + '</div>';
+  }
+  function rewardToast(msg){
+    try{
+      var t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+      document.body.appendChild(t);
+      requestAnimationFrame(function(){ t.classList.add("show"); });
+      setTimeout(function(){ t.classList.remove("show"); setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 400); }, 2600);
+    }catch(e){}
+  }
+
   /* ---------- markup builders ---------- */
   function mastheadHTML(){
     return '<div class="mast"><h1 class="word">Pack<span>ed</span><small>School &amp; sports checklist</small></h1>'
@@ -744,7 +792,12 @@
     row.querySelector(".mark").innerHTML = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
     var st = row.querySelector(".state");
     if(st) st.textContent = s===0 ? "Not yet" : s===1 ? "Packed" : "Got it";
-    if(allComplete(view) && !wasAll){ setTimeout(function(){ play("allDone"); celebrate(); }, 170); }
+    if(allComplete(view) && !wasAll){
+      markDone(key(view));
+      var streak = currentStreak();
+      setTimeout(function(){ play("allDone"); celebrate(); }, 170);
+      if(MILESTONES.indexOf(streak) !== -1) setTimeout(function(){ rewardToast("🏅 " + streak + "-day streak!"); }, 560);
+    }
     else if(dayComplete(it.kid, view) && !wasKid){ setTimeout(function(){ play("kidDone"); }, 170); }
     setTimeout(render, 330);
   }
@@ -757,6 +810,7 @@
     document.documentElement.style.setProperty("--accent", tint(kid));
     var html = mastheadHTML() + syncHTML() + kidsTabsHTML() + vtabsHTML();
     if(viewMode === "sched"){ app.innerHTML = html + scheduleHTML(kid) + schedNoteHTML(); wire(); return; }
+    html += streakHTML();
     html += daybarHTML(cueHTML(k.id, false) + progressHTML(k.id));
     html += listHTML(k.id, dk) + addFormHTML(kid) + toolsHTML(kid) + noteTodayHTML();
     app.innerHTML = html; wire();
@@ -766,7 +820,7 @@
     document.documentElement.style.setProperty("--accent", "var(--kid-a)");
     var dk = key(view);
     var html = mastheadHTML() + syncHTML() + vtabsHTML();
-    if(viewMode !== "sched") html += daybarHTML(cueHTML(null, true));
+    if(viewMode !== "sched"){ html += streakHTML(); html += daybarHTML(cueHTML(null, true)); }
     html += '<div class="cols">';
     state.kids.forEach(function(p, ki){
       html += '<div class="col" style="--accent:' + tint(ki) + '">' + colheadHTML(ki)
