@@ -395,7 +395,7 @@
       console.error(e);
     }
     busy = false;
-    if(!dragging) render();
+    if(!dragging && !isEditing()) render();   // don't wipe a form the user is typing in
   }
   var nudge = null;
   function touched(){
@@ -631,6 +631,7 @@
   function q(sel){ return app.querySelectorAll(sel); }
   function byId(id){ return document.getElementById(id); }
   function on(el, ev, fn){ if(el) el.addEventListener(ev, fn); }
+  function isEditing(){ var a = document.activeElement; return !!(a && a.tagName === "INPUT" && a.type === "text" && app.contains(a)); }
   function tint(ki){ return ki === 0 ? "var(--kid-a)" : "var(--kid-b)"; }
   function dowLabel(dk){
     var todayK = key(startOfToday()), tomorrowK = key(shift(startOfToday(),1));
@@ -690,16 +691,23 @@
   /* ---------- streaks ---------- */
   var MILESTONES = [3,5,7,10,14,21,30,50,75,100];
   function markDone(dk){ if(!state.done) state.done = {}; if(!state.done[dk]){ state.done[dk] = 1; touched(); } }
-  function isNextDay(a,b){ var d = new Date(a + "T00:00:00"); d.setDate(d.getDate()+1); return key(d) === b; }
+  // Streaks count weekdays only — weekends often have nothing to pack, so they
+  // neither break the streak nor need to be completed.
+  function isWeekday(d){ var g = d.getDay(); return g >= 1 && g <= 5; }
+  function prevWeekday(d){ var x = shift(d,-1); while(!isWeekday(x)) x = shift(x,-1); return x; }
+  function nextWeekdayKey(a){ var d = new Date(a + "T00:00:00"); do { d.setDate(d.getDate()+1); } while(d.getDay()===0 || d.getDay()===6); return key(d); }
   function currentStreak(){
-    var done = state.done || {}, d = startOfToday(), n = 0;
-    if(!done[key(d)]){ d = shift(d,-1); if(!done[key(d)]) return 0; }  // today or (if not yet) yesterday
-    while(done[key(d)]){ n++; d = shift(d,-1); }
+    var done = state.done || {}, d = startOfToday();
+    if(!isWeekday(d)) d = prevWeekday(d);            // on a weekend, lean on the last weekday (Fri)
+    if(!done[key(d)]){ d = prevWeekday(d); if(!done[key(d)]) return 0; }  // today not done yet? show the run through the prior weekday
+    var n = 0;
+    while(done[key(d)]){ n++; d = prevWeekday(d); }
     return n;
   }
   function bestStreak(){
-    var days = Object.keys(state.done || {}).sort(), best = 0, run = 0, prev = null;
-    days.forEach(function(k){ run = (prev && isNextDay(prev,k)) ? run+1 : 1; if(run > best) best = run; prev = k; });
+    var days = Object.keys(state.done || {}).filter(function(k){ var g = new Date(k+"T00:00:00").getDay(); return g>=1 && g<=5; }).sort();
+    var best = 0, run = 0, prev = null;
+    days.forEach(function(k){ run = (prev && nextWeekdayKey(prev) === k) ? run+1 : 1; if(run > best) best = run; prev = k; });
     return best;
   }
   function streakHTML(){
