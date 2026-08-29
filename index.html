@@ -209,6 +209,15 @@
     font-size:12.5px;color:var(--text)}
   .loading{text-align:center;padding:60px 0;color:var(--muted);font-family:var(--display);
     letter-spacing:.14em;text-transform:uppercase}
+  /* ---------- emoji picker ---------- */
+  .emojis{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+  .ebtn{width:42px;height:42px;border-radius:10px;background:#131A26;border:1px solid var(--line);
+    font-size:21px;line-height:1;cursor:pointer;display:grid;place-items:center;
+    transition:border-color .15s,transform .1s,background .15s}
+  .ebtn:hover{border-color:var(--muted)}
+  .ebtn.on{border-color:var(--accent);background:rgba(255,255,255,.05);transform:scale(1.06)}
+  .row .nm b .ico,.snm .ico{margin-right:2px}
+
   /* ---------- iPad two-up layout ---------- */
   .col{min-width:0}
   .colhead{display:flex;align-items:baseline;justify-content:space-between;gap:10px;
@@ -416,7 +425,7 @@
     days = days.slice().sort(function(a,b){ return a-b; });
     var type = days.length === 7 ? "daily" : "weekly";
     state.items[id] = { id:it.id, kid:it.kid, name:it.name, type:type,
-      days: type === "daily" ? [] : days, date:it.date, t:now() };
+      days: type === "daily" ? [] : days, date:it.date, emoji:it.emoji, t:now() };
     touched();
   }
   function toggleItemDay(id, d){
@@ -585,6 +594,40 @@
     return any && ok;
   }
 
+  /* ---------- emoji icons ---------- */
+  var EMOJI_RULES = [
+    [/water|bottle|thermos|drink/,"💧"],[/juice|smoothie/,"🧃"],[/lunch|bento/,"🍱"],[/fruit|apple/,"🍎"],
+    [/snack|granola|bar|cookie/,"🍪"],[/homework|worksheet|folder/,"📒"],[/book|read|library|novel/,"📚"],
+    [/binder|notebook|journal|diary/,"📓"],[/pencil|pen|marker|crayon/,"✏️"],[/art|paint|draw|craft/,"🎨"],
+    [/science|lab|experiment/,"🔬"],[/math|calculator/,"🧮"],[/project|poster/,"🖼️"],[/form|permission|slip|paper/,"📝"],
+    [/tennis|racquet|racket/,"🎾"],[/soccer|football|cleat/,"⚽"],[/basketball|hoop/,"🏀"],
+    [/baseball|softball|glove|mitt|bat/,"⚾"],[/swim|goggle|pool/,"🏊"],[/hockey|stick|puck/,"🏒"],[/golf/,"⛳"],
+    [/bike|helmet|cycl|scooter/,"🚲"],[/skate|board/,"🛹"],[/dance|ballet|leotard/,"🩰"],[/karate|judo|belt/,"🥋"],
+    [/gym|shorts|jersey|uniform|kit/,"🩳"],[/shoe|sneaker|trainer|boot|cleat/,"👟"],[/sock/,"🧦"],
+    [/jacket|coat|hoodie|sweater/,"🧥"],[/hat|cap|beanie/,"🧢"],[/glove|mitten/,"🧤"],[/shirt|top/,"👕"],
+    [/towel/,"🧻"],[/sunscreen|lotion|sunblock/,"🧴"],[/glasses|specs/,"👓"],[/medicine|inhaler|pill|epi|allerg/,"💊"],
+    [/key/,"🔑"],[/money|cash|wallet/,"💵"],[/card|badge|pass| id\b/,"🪪"],[/phone|tablet|ipad/,"📱"],
+    [/laptop|chromebook|computer/,"💻"],[/charger|cable|cord/,"🔌"],[/headphone|earbud|airpod/,"🎧"],
+    [/violin|viola/,"🎻"],[/guitar|ukulele|bass/,"🎸"],[/flute|clarinet|recorder|oboe/,"🎶"],
+    [/trumpet|horn|trombone|brass/,"🎺"],[/piano|keyboard/,"🎹"],[/drum/,"🥁"],[/music|band|choir|sing/,"🎵"],
+    [/bag|backpack|pack/,"🎒"],[/umbrella|rain/,"☂️"],[/chess/,"♟️"],[/camera/,"📷"],[/scissors/,"✂️"],
+    [/ruler/,"📏"],[/snack|food/,"🍎"],[/ball/,"⚽"]
+  ];
+  function guessEmoji(name){
+    var n = " " + String(name).toLowerCase() + " ";
+    for(var i=0;i<EMOJI_RULES.length;i++){ if(EMOJI_RULES[i][0].test(n)) return EMOJI_RULES[i][1]; }
+    return "⭐";
+  }
+  function itemEmoji(it){ return it.emoji || guessEmoji(it.name); }
+  var PALETTE = ["⭐","💧","🍎","🍱","🍪","📚","📒","✏️","🎨","🔬","🎾","⚽","🏀","⚾","🏊","🚲","🛹","👟","🧥","🧢","🎒","🎻","🎸","🎧","💻","🔑","💊","🧴"];
+  function emojiPaletteHTML(who, selected){
+    return '<div class="lab" style="margin-top:16px">Pick an icon</div><div class="emojis">'
+      + PALETTE.map(function(e){
+          return '<button class="ebtn' + (selected===e?" on":"") + '" data-emojipick="' + who + '|' + e + '" aria-label="icon">' + e + '</button>';
+        }).join("")
+      + '</div>';
+  }
+
   /* ---------- markup builders ---------- */
   function mastheadHTML(){
     return '<div class="mast"><h1 class="word">Pack<span>ed</span><small>School &amp; sports checklist</small></h1>'
@@ -637,7 +680,7 @@
     var glyph = s===0 ? "" : s===1 ? "&#9679;" : "&#10003;";
     return '<div class="row s' + s + '" data-id="' + it.id + '" role="button" tabindex="0" aria-label="' + esc(it.name) + ', ' + label + '">'
       + '<span class="sweep"></span><span class="mark">' + glyph + '</span>'
-      + '<span class="nm"><b>' + esc(it.name) + '</b><span class="when">' + when(it) + '</span></span>'
+      + '<span class="nm"><b><span class="ico">' + itemEmoji(it) + '</span> ' + esc(it.name) + '</b><span class="when">' + when(it) + '</span></span>'
       + (edit ? '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button>'
               : '<span class="state">' + label + '</span>')
       + '</div>';
@@ -663,6 +706,7 @@
         + '<div class="days' + (draft.type==="weekly"?" open":"") + '">'
         +   DOW1.map(function(d,i){ return '<button class="chip" data-day="' + i + '" aria-pressed="' + (draft.days.indexOf(i)!==-1) + '" aria-label="' + DOW[i] + '">' + d + '</button>'; }).join("")
         + '</div>'
+        + emojiPaletteHTML("t", draft.emoji)
         + '<div class="actions"><button class="btn" data-cancel="1">Cancel</button><button class="btn primary" id="saveItem">Add to list</button></div>'
         + '</div>';
     }
@@ -739,7 +783,7 @@
   /* ---------- schedule screen ---------- */
   function scardHTML(it){
     var days = itemDays(it);
-    return '<div class="scard"><div class="scard-top"><span class="snm">' + esc(it.name) + '</span>'
+    return '<div class="scard"><div class="scard-top"><span class="snm"><span class="ico">' + itemEmoji(it) + '</span> ' + esc(it.name) + '</span>'
       + '<span class="swhen">' + when(it) + '</span>'
       + '<button class="kill" data-del="' + it.id + '" aria-label="Delete ' + esc(it.name) + '">&#215;</button></div>'
       + '<div class="drow">'
@@ -765,6 +809,7 @@
       + '<div class="days open">'
       +   DOW1.map(function(dl,di){ return '<button class="chip" data-sdraft="' + ki + ':' + di + '" aria-pressed="' + (dd.indexOf(di)!==-1) + '" aria-label="' + DOW[di] + '">' + dl + '</button>'; }).join("")
       + '</div>'
+      + emojiPaletteHTML("s"+ki, schedDraft[ki].emoji)
       + '<div class="actions"><button class="btn primary" data-schedadd="' + ki + '">Add to schedule</button></div>'
       + '</div>';
     return h;
@@ -776,7 +821,7 @@
     var days = schedDraft[ki].days.slice().sort(function(a,b){ return a-b; });
     if(!days.length) days = [1,2,3,4,5];
     var id = uid(), type = days.length === 7 ? "daily" : "weekly";
-    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, t:now() };
+    state.items[id] = { id:id, kid:state.kids[ki].id, name:name, type:type, days: type==="daily"?[]:days, emoji:schedDraft[ki].emoji || guessEmoji(name), t:now() };
     schedDraft[ki] = { days: days.slice() };
     touched(); render();
   }
@@ -800,6 +845,22 @@
       });
     });
     q("[data-schedadd]").forEach(function(b){ on(b,"click",function(){ addSchedItem(+b.dataset.schedadd); }); });
+    q("[data-emojipick]").forEach(function(b){
+      on(b,"click",function(){
+        var raw = b.dataset.emojipick, bar = raw.indexOf("|"), who = raw.slice(0,bar), em = raw.slice(bar+1);
+        if(who === "t"){
+          draft.emoji = (draft.emoji === em) ? null : em;
+          var t = byId("fname") ? byId("fname").value : ""; render();
+          if(byId("fname")) byId("fname").value = t;
+        } else {
+          var ki = +who.slice(1);
+          if(!schedDraft[ki]) schedDraft[ki] = { days:[1,2,3,4,5] };
+          schedDraft[ki].emoji = (schedDraft[ki].emoji === em) ? null : em;
+          var el = byId("sname-"+ki), v = el ? el.value : ""; render();
+          var el2 = byId("sname-"+ki); if(el2) el2.value = v;
+        }
+      });
+    });
     q('[id^="sname-"]').forEach(function(inp){ on(inp,"keydown",function(e){ if(e.key === "Enter") addSchedItem(+inp.id.split("-")[1]); }); });
 
     q("[data-kid]").forEach(function(b){
@@ -878,7 +939,7 @@
     if(!name){ f.focus(); f.style.borderColor = "var(--red)"; return; }
     if(draft.type === "weekly" && !draft.days.length) draft.days = [view.getDay()];
     var id = uid();
-    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), t:now() };
+    var it = { id:id, kid:state.kids[formKid].id, name:name, type:draft.type, days:draft.days.slice(), emoji:draft.emoji || guessEmoji(name), t:now() };
     if(draft.type === "once") it.date = key(view);
     state.items[id] = it;
     draft = { type:draft.type, days:draft.type === "weekly" ? draft.days.slice() : [] };
