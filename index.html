@@ -1466,18 +1466,24 @@
     var dt=Math.min(0.05,(ts-GAME.last)/1000); GAME.last=ts; GAME.timeLeft-=dt;
     if(GAME.timeLeft<=0){ GAME.timeEl.textContent="0"; showResults(GAME.sc[0],GAME.sc[1]); return; }
     GAME.timeEl.textContent=Math.ceil(GAME.timeLeft); GAME.spawn-=dt;
-    if(GAME.spawn<=0){ squashSpawn(); GAME.spawn=Math.max(0.32,0.75-(30-GAME.timeLeft)*0.013); }
+    if(GAME.spawn<=0){
+      var prog=(30-GAME.timeLeft)/30, life=820-prog*400;      // bugs vanish faster over time: 820ms -> ~420ms
+      squashSpawn(0, life); squashSpawn(1, life);              // one on each side every interval...
+      if(Math.random() < 0.4 + prog*0.45){ squashSpawn(Math.random()<0.5?0:1, life); }  // ...plus a random extra
+      GAME.spawn = Math.max(0.16, 0.42 - prog*0.28);           // and they come faster: 0.42s -> 0.16s
+    }
     GAME.raf=requestAnimationFrame(squashTick);
   }
-  function squashSpawn(){
-    var side=Math.random()<0.5?0:1, f=GAME.fields[side]; if(!f) return;
+  function squashSpawn(side, life){
+    var f=GAME.fields[side]; if(!f) return;
+    if(f.querySelectorAll(".bug").length >= 5) return;          // cap clutter per side
     var el=document.createElement("button"); el.className="bug"; el.innerHTML="<span>"+BUGS[Math.floor(Math.random()*BUGS.length)]+"</span>";
     var w=f.clientWidth,h=f.clientHeight;
     el.style.left=(6+Math.random()*Math.max(10,w-64))+"px"; el.style.top=(6+Math.random()*Math.max(10,h-64))+"px";
     var alive=true;
-    el.addEventListener("pointerdown",function(e){ e.preventDefault(); if(!alive)return; alive=false; GAME.sc[side]++; GAME.scoreEls[side].textContent=GAME.sc[side]; el.classList.add("pop"); buzz(6); play("pack",side); gt(function(){ if(el.parentNode)el.parentNode.removeChild(el); },160); });
+    el.addEventListener("pointerdown",function(e){ e.preventDefault(); if(!alive)return; alive=false; GAME.sc[side]++; GAME.scoreEls[side].textContent=GAME.sc[side]; el.classList.add("pop"); buzz(6); play("pack",side); gt(function(){ if(el.parentNode)el.parentNode.removeChild(el); },140); });
     f.appendChild(el);
-    gt(function(){ if(alive && el.parentNode) el.parentNode.removeChild(el); }, 1100);
+    gt(function(){ if(alive && el.parentNode) el.parentNode.removeChild(el); }, life||800);
   }
 
   /* ---------- boot ---------- */
