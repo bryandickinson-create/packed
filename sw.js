@@ -1,7 +1,7 @@
 /* Packed service worker — offline shell + reliable updates.
    Bump CACHE when the caching strategy itself changes. The app HTML is
    fetched network-first, so content updates land without touching this. */
-var CACHE = "packed-cache-v1";
+var CACHE = "packed-cache-v2";
 var CORE = ["./", "./index.html", "./manifest.webmanifest",
             "./icon-192.png", "./icon-512.png", "./apple-touch-icon.png"];
 
@@ -24,6 +24,13 @@ self.addEventListener("activate", function(e){
 self.addEventListener("fetch", function(e){
   var req = e.request;
   if(req.method !== "GET") return;
+
+  // Never intercept cross-origin API calls (e.g. Supabase sync) — let them
+  // go straight to the network. Only the app shell + Google Fonts are cached.
+  var url = new URL(req.url);
+  var sameOrigin = url.origin === self.location.origin;
+  var isFont = url.hostname === "fonts.googleapis.com" || url.hostname === "fonts.gstatic.com";
+  if(!sameOrigin && !isFont) return;
 
   var isDoc = req.mode === "navigate" || req.destination === "document";
   if(isDoc){
