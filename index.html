@@ -354,6 +354,27 @@
   .spads{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:min(72vw,300px);margin:auto}
   .spad{aspect-ratio:1;border-radius:16px;border:none;background:var(--sc);opacity:.4;cursor:pointer;transition:opacity .06s,box-shadow .06s}
   .spad.lit{opacity:1;box-shadow:0 0 26px var(--sc)}
+  /* Color Clash */
+  .stroop .dhalf{flex-direction:column;gap:16px}
+  .stword{font-family:var(--display);font-weight:700;font-size:52px;letter-spacing:.02em;text-transform:uppercase}
+  .stbtns{display:flex;gap:12px}
+  .stbtn{width:60px;height:60px;border-radius:14px;border:3px solid rgba(255,255,255,.15);background:var(--sc);cursor:pointer}
+  .stbtn.stok{outline:3px solid #fff}
+  .stbtn.stno{opacity:.35}
+  /* Odd One Out */
+  .odd .dhalf{align-items:center;justify-content:center}
+  .oddgrid{display:grid;gap:6px;padding:10px;width:min(84vw,340px);margin:auto}
+  .oddc{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:min(8vw,30px);
+    background:#131a26;border:1px solid var(--line);border-radius:10px;cursor:pointer;line-height:1}
+  .oddc.oddhit{background:var(--green);border-color:var(--green)}
+  .oddc.oddmiss{opacity:.35}
+  /* Snap! */
+  .snap .dhalf,.snapwin .dhalf{font-size:34px}
+  .snslap{font-family:var(--display);font-weight:700;font-size:44px;letter-spacing:.06em;color:var(--muted)}
+  .sncard{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);font-size:76px;pointer-events:none;z-index:4;
+    background:#0e1420;border:2px solid var(--line);border-radius:18px;width:120px;height:120px;display:flex;align-items:center;justify-content:center}
+  .sncard.pulse{animation:snp .18s ease}
+  @keyframes snp{0%{transform:translate(-50%,-50%) scale(.7)}60%{transform:translate(-50%,-50%) scale(1.12)}100%{transform:translate(-50%,-50%) scale(1)}}
 
   @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -1293,8 +1314,8 @@
 
   /* ---------- daily game reward (random mini-games) ---------- */
   var GAME = null;
-  var GAMES = ["catcher","tug","reaction","squash","order","math","simon"];
-  var GAME_FNS = { catcher:catcherStart, tug:tugStart, reaction:reactionStart, squash:squashStart, order:orderStart, math:mathStart, simon:simonStart };
+  var GAMES = ["catcher","tug","reaction","squash","order","math","simon","stroop","odd","snap"];
+  var GAME_FNS = { catcher:catcherStart, tug:tugStart, reaction:reactionStart, squash:squashStart, order:orderStart, math:mathStart, simon:simonStart, stroop:stroopStart, odd:oddStart, snap:snapStart };
   var CATCH = ["⭐","🍎","🍌","🍓","🍊","🍇","🎈"];
   var BUGS = ["🐛","🪲","🦗","🐞"];
   function nowMins(){ var d = new Date(); return d.getHours()*60 + d.getMinutes(); }
@@ -1639,6 +1660,97 @@
         gt(function(){ showResults(a, b); }, 700);
       }
     }
+  }
+
+  /* --- Game 8: Color Clash (Stroop — tap the ink colour, not the word) --- */
+  var COLORS = [["Red","#e5484d"],["Blue","#4c8dff"],["Green","#3fcf6e"],["Yellow","#f5c518"]];
+  function stroopStart(){ GAME.wins=[0,0]; introScreen("Color Clash", "iPad flat between you. Tap the swatch that matches the COLOR of the word — not what it says! First to 3.", "🎨", stroopRound); }
+  function stroopHalfHTML(side, ink, word){
+    return '<div class="stword" style="color:'+COLORS[ink][1]+'">'+COLORS[word][0]+'</div><div class="stbtns">'
+      + COLORS.map(function(c,i){ return '<button class="stbtn" data-stside="'+side+'" data-stink="'+i+'" style="--sc:'+c[1]+'" aria-label="'+c[0]+'"></button>'; }).join("") + '</div>';
+  }
+  function stroopRound(){
+    if(!GAME) return;
+    var ink=ri(4), word=ri(4); while(word===ink) word=ri(4);
+    GAME.ink=ink; GAME.locked=[false,false]; GAME.sdone=false;
+    GAME.root.innerHTML='<div class="duel stroop">'
+      +'<div class="dhalf dtop">'+stroopHalfHTML(1,ink,word)+'</div>'
+      +'<div class="dmid"><span style="color:var(--kid-a)">'+GAME.wins[0]+'</span>&nbsp;—&nbsp;<span style="color:var(--kid-b)">'+GAME.wins[1]+'</span></div>'
+      +'<div class="dhalf dbot">'+stroopHalfHTML(0,ink,word)+'</div></div>'+quitBtn();
+    GAME.root.querySelectorAll("[data-stink]").forEach(function(b){ b.addEventListener("pointerdown",function(e){ e.preventDefault(); stroopTap(+b.dataset.stside,+b.dataset.stink,b); }); });
+    wireGame();
+  }
+  function stroopTap(side, ink, btn){
+    if(!GAME||GAME.sdone||GAME.locked[side]) return;
+    if(ink===GAME.ink){ GAME.sdone=true; GAME.wins[side]++; btn.classList.add("stok"); buzz(12); play("got",side);
+      if(GAME.wins[side]>=3) gt(function(){ showResults(GAME.wins[0],GAME.wins[1]); },850); else gt(stroopRound,900); }
+    else { GAME.locked[side]=true; btn.classList.add("stno"); buzz(25); play("reset",side);
+      if(GAME.locked[0]&&GAME.locked[1]&&!GAME.sdone){ GAME.sdone=true; gt(stroopRound,900); } }
+  }
+
+  /* --- Game 9: Odd One Out (spot the different emoji, grid grows) --- */
+  var ODD = [["🐶","🐺"],["🐱","🐯"],["🍎","🍅"],["🌝","🌚"],["😀","😄"],["⭐","🌟"],["🟠","🔴"],["🐰","🐹"],["🚗","🚙"],["🦁","🐯"],["🐸","🐢"],["🍊","🍋"]];
+  function oddStart(){ GAME.wins=[0,0]; GAME.oround=0; introScreen("Odd One Out", "iPad flat between you. One emoji is different from the rest — tap it first to score! First to 3, and it gets trickier.", "🔎", oddRound); }
+  function oddRound(){
+    if(!GAME) return;
+    GAME.oround++;
+    var pair=ODD[ri(ODD.length)], base=pair[0], odd=pair[1]; if(Math.random()<0.5){ base=pair[1]; odd=pair[0]; }
+    var n=Math.min(30, 6+GAME.oround*3), cols=Math.min(6, Math.ceil(Math.sqrt(n)));
+    GAME.oddPos=ri(n); GAME.odone=false; GAME.locked=[false,false];
+    function grid(side){ var h='<div class="oddgrid" style="grid-template-columns:repeat('+cols+',1fr)">', i;
+      for(i=0;i<n;i++) h+='<button class="oddc" data-odside="'+side+'" data-odd="'+(i===GAME.oddPos?1:0)+'">'+(i===GAME.oddPos?odd:base)+'</button>';
+      return h+'</div>'; }
+    GAME.root.innerHTML='<div class="duel odd">'
+      +'<div class="dhalf dtop">'+grid(1)+'</div>'
+      +'<div class="dmid"><span style="color:var(--kid-a)">'+GAME.wins[0]+'</span>&nbsp;—&nbsp;<span style="color:var(--kid-b)">'+GAME.wins[1]+'</span></div>'
+      +'<div class="dhalf dbot">'+grid(0)+'</div></div>'+quitBtn();
+    GAME.root.querySelectorAll("[data-odd]").forEach(function(b){ b.addEventListener("pointerdown",function(e){ e.preventDefault(); oddTap(+b.dataset.odside,+b.dataset.odd,b); }); });
+    wireGame();
+  }
+  function oddTap(side, isOdd, btn){
+    if(!GAME||GAME.odone||GAME.locked[side]) return;
+    if(isOdd){ GAME.odone=true; GAME.wins[side]++; btn.classList.add("oddhit"); buzz(12); play("got",side);
+      if(GAME.wins[side]>=3) gt(function(){ showResults(GAME.wins[0],GAME.wins[1]); },850); else gt(oddRound,900); }
+    else { GAME.locked[side]=true; btn.classList.add("oddmiss"); buzz(22); play("reset",side);
+      if(GAME.locked[0]&&GAME.locked[1]&&!GAME.odone){ GAME.odone=true; gt(oddRound,900); } }
+  }
+
+  /* --- Game 10: Snap! (slap when two cards in a row match) --- */
+  var SNAP=["🍕","🐶","⚽","🌈","🚀","🍦","🎸","🐸"];
+  function snapStart(){ GAME.wins=[0,0]; introScreen("Snap!", "iPad flat between you. Cards flip in the middle — when TWO IN A ROW match, slap your side! Slap on a non-match and the point goes to the other player. First to 3.", "🃏", snapRound); }
+  function snapRound(){
+    if(!GAME) return;
+    GAME.prev=null; GAME.match=false; GAME.slapDone=false;
+    GAME.root.innerHTML='<div class="duel snap">'
+      +'<div class="dhalf dtop" data-snside="1"><div class="snslap">SLAP!</div></div>'
+      +'<div class="dmid"><span style="color:var(--kid-a)">'+GAME.wins[0]+'</span>&nbsp;—&nbsp;<span style="color:var(--kid-b)">'+GAME.wins[1]+'</span></div>'
+      +'<div class="dhalf dbot" data-snside="0"><div class="snslap">SLAP!</div></div>'
+      +'<div class="sncard" id="sncard">·</div></div>'+quitBtn();
+    GAME.root.querySelectorAll("[data-snside]").forEach(function(z){ z.addEventListener("pointerdown",function(e){ e.preventDefault(); snapSlap(+z.dataset.snside); }); });
+    wireGame(); gt(snapFlip, 600);
+  }
+  function snapFlip(){
+    if(!GAME||GAME.slapDone) return;
+    var card=SNAP[ri(SNAP.length)];
+    GAME.match=(card===GAME.prev); GAME.prev=card;
+    var el=GAME.root.querySelector("#sncard"); if(el){ el.textContent=card; el.classList.remove("pulse"); void el.offsetWidth; el.classList.add("pulse"); }
+    play("pack",0);
+    gt(snapFlip, 800+Math.random()*700);
+  }
+  function snapSlap(side){
+    if(!GAME||GAME.slapDone) return;
+    GAME.slapDone=true; clearGameTimers();
+    var winner=GAME.match ? side : (side===0?1:0);
+    GAME.wins[winner]++; play(GAME.match?"got":"reset", winner); buzz(GAME.match?12:25);
+    var note=GAME.match ? "Snap! 🎉" : "Not a match!";
+    var ws='style="background:'+(winner===0?"var(--kid-a)":"var(--kid-b)")+';color:#101622"';
+    GAME.root.innerHTML=quitBtn()+'<div class="duel snapwin">'
+      +'<div class="dhalf dtop" '+(winner===1?ws:'')+'>'+(winner===1?nameOf(1)+" +1":"")+'</div>'
+      +'<div class="dmid">'+note+'&nbsp; <span style="color:var(--kid-a)">'+GAME.wins[0]+'</span>—<span style="color:var(--kid-b)">'+GAME.wins[1]+'</span></div>'
+      +'<div class="dhalf dbot" '+(winner===0?ws:'')+'>'+(winner===0?nameOf(0)+" +1":"")+'</div></div>';
+    wireGame();
+    if(GAME.wins[winner]>=3) gt(function(){ showResults(GAME.wins[0],GAME.wins[1]); },1050);
+    else gt(snapRound, 1250);
   }
 
   /* ---------- boot ---------- */
