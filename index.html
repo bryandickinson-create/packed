@@ -336,6 +336,24 @@
   .bug{position:absolute;width:60px;height:60px;background:none;border:none;padding:0;cursor:pointer;touch-action:none}
   .bug>span{display:block;font-size:46px;line-height:1.25;pointer-events:none}
   .bug.pop>span{animation:gcatch .16s ease forwards}
+  /* Number Rush */
+  .ofield{position:absolute;inset:0}
+  .onum{position:absolute;width:52px;height:52px;border-radius:50%;border:2px solid var(--oc);background:#131a26;
+    color:#fff;font-family:var(--display);font-weight:700;font-size:24px;cursor:pointer;transition:transform .1s}
+  .onum.gone{opacity:.2;border-color:var(--line);color:var(--muted)}
+  .onum.wrong{background:var(--red);border-color:var(--red);transform:scale(.9)}
+  /* Math Duel */
+  .math .dhalf{flex-direction:column;gap:14px}
+  .mq{font-family:var(--display);font-weight:700;font-size:40px;color:var(--text)}
+  .mopts{display:flex;gap:10px}
+  .mopt{min-width:74px;padding:14px 6px;border-radius:12px;border:1px solid var(--line);background:#131a26;
+    color:var(--text);font-family:var(--display);font-weight:700;font-size:26px;cursor:pointer}
+  .mopt.right{background:var(--green);border-color:var(--green);color:#101622}
+  .mopt.nope{background:var(--red);border-color:var(--red);opacity:.8}
+  /* Memory Match */
+  .spads{display:grid;grid-template-columns:1fr 1fr;gap:12px;width:min(72vw,300px);margin:auto}
+  .spad{aspect-ratio:1;border-radius:16px;border:none;background:var(--sc);opacity:.4;cursor:pointer;transition:opacity .06s,box-shadow .06s}
+  .spad.lit{opacity:1;box-shadow:0 0 26px var(--sc)}
 
   @media (prefers-reduced-motion: reduce){*{animation:none !important;transition:none !important}}
 </style>
@@ -426,7 +444,11 @@
     [a.done,b.done].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.done[k] = 1; }); });
     [a.cats,b.cats].forEach(function(src){ for(var kk in (src||{})){ out.cats[kk] = out.cats[kk] || [];
       (src[kk]||[]).forEach(function(c){ if(out.cats[kk].indexOf(c) === -1) out.cats[kk].push(c); }); } });
-    [a.reward,b.reward].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ out.reward[k] = 1; }); });
+    var rkeys = {}; [a.reward,b.reward].forEach(function(src){ Object.keys(src||{}).forEach(function(k){ rkeys[k] = 1; }); });
+    Object.keys(rkeys).forEach(function(k){
+      var va = (a.reward||{})[k], vb = (b.reward||{})[k];
+      out.reward[k] = (va === "done" || vb === "done") ? "done" : (va || vb);   // "played" wins across devices
+    });
     return out;
   }
   function tidy(){
@@ -813,6 +835,7 @@
   /* ---------- streaks ---------- */
   var MILESTONES = [3,5,7,10,14,21,30,50,75,100];
   var DEADLINE_MIN = 7*60 + 40;   // finish by 7:40am to unlock the game
+  var STOP_MIN = 7*60 + 55;       // ...and it can only be played until 7:55am
   function markDone(dk){ if(!state.done) state.done = {}; if(!state.done[dk]){ state.done[dk] = 1; touched(); } }
   // Streaks count weekdays only — weekends often have nothing to pack, so they
   // neither break the streak nor need to be completed.
@@ -985,7 +1008,7 @@
       var td = key(startOfToday());
       if(key(view) === td && !state.reward[td]){
         var mins = new Date().getHours()*60 + new Date().getMinutes();
-        if(mins <= DEADLINE_MIN){ state.reward[td] = 1; touched(); setTimeout(function(){ rewardToast("🎮 Game unlocked!"); }, 950); }
+        if(mins <= DEADLINE_MIN){ state.reward[td] = GAMES[Math.floor(Math.random()*GAMES.length)]; touched(); setTimeout(function(){ rewardToast("🎮 Game unlocked — play before 7:55!"); }, 950); }
       }
     }
     else if(dayComplete(it.kid, view) && !wasKid){ setTimeout(function(){ play("kidDone"); }, 170); }
@@ -1270,11 +1293,16 @@
 
   /* ---------- daily game reward (random mini-games) ---------- */
   var GAME = null;
-  var GAMES = ["catcher","tug","reaction","squash"];
+  var GAMES = ["catcher","tug","reaction","squash","order","math","simon"];
+  var GAME_FNS = { catcher:catcherStart, tug:tugStart, reaction:reactionStart, squash:squashStart, order:orderStart, math:mathStart, simon:simonStart };
   var CATCH = ["⭐","🍎","🍌","🍓","🍊","🍇","🎈"];
   var BUGS = ["🐛","🪲","🦗","🐞"];
-  function gameUnlocked(){ return !!(state.reward && state.reward[key(startOfToday())]); }
-  function gameBannerHTML(){ return gameUnlocked() ? '<button class="gamebtn" id="playGame">🎮 Play today’s game — you earned it!</button>' : ""; }
+  function nowMins(){ var d = new Date(); return d.getHours()*60 + d.getMinutes(); }
+  // reward[today] holds the chosen game id until it's played, then "done".
+  function todayGame(){ var v = state.reward && state.reward[key(startOfToday())]; return (v && v !== "done") ? v : null; }
+  function withinWindow(){ return nowMins() <= STOP_MIN; }               // playable only until 7:55am
+  function gameAvailable(){ return !!todayGame() && withinWindow() && !!GAME_FNS[todayGame()]; }
+  function gameBannerHTML(){ return gameAvailable() ? '<button class="gamebtn" id="playGame">🎮 Play today’s game — before 7:55!</button>' : ""; }
   function nameOf(i){ return esc(state.kids[i].name); }
   function quitBtn(){ return '<button class="gquit" data-gquit aria-label="Quit">✕</button>'; }
   function buzz(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms||8); }catch(e){} }
@@ -1284,15 +1312,12 @@
 
   function openGame(){
     if(GAME) return;
+    var id = todayGame();
+    if(!id || !withinWindow() || !GAME_FNS[id]) return;   // one per day, only in the window
     var root = document.createElement("div"); root.className = "game"; document.body.appendChild(root);
-    GAME = { root:root, raf:0, running:false, timers:[] };
-    startRandomGame();
-  }
-  function startRandomGame(){
-    stopLoop();
-    GAME.id = GAMES[Math.floor(Math.random()*GAMES.length)];
+    GAME = { root:root, raf:0, running:false, timers:[], id:id };
     GAME.root.style.setProperty("--gaccent", "var(--kid-a)");
-    ({ catcher:catcherStart, tug:tugStart, reaction:reactionStart, squash:squashStart })[GAME.id]();
+    GAME_FNS[id]();
   }
   function closeGame(){
     if(!GAME) return;
@@ -1304,7 +1329,6 @@
     var r = GAME.root, b;
     if((b = r.querySelector("[data-gquit]"))) b.addEventListener("click", closeGame);
     if((b = r.querySelector("[data-gstart]"))) b.addEventListener("click", function(){ if(GAME._start) GAME._start(); });
-    if((b = r.querySelector("[data-gagain]"))) b.addEventListener("click", startRandomGame);
     if((b = r.querySelector("[data-gdone]"))) b.addEventListener("click", closeGame);
   }
   function introScreen(title, sub, emoji, onStart){
@@ -1326,13 +1350,16 @@
   function winnerTitle(a,b){ return a===b ? "It’s a tie! 🤝" : ((a>b?nameOf(0):nameOf(1)) + " wins! 🏆"); }
   function showResults(a, b){
     stopLoop();
+    var td = key(startOfToday());                     // one game per day — mark it played
+    if(state.reward){ state.reward[td] = "done"; touched(); }
     GAME.root.style.setProperty("--gaccent", a>=b ? "var(--kid-a)" : "var(--kid-b)");
     play("allDone"); celebrate();
     GAME.root.innerHTML = quitBtn()
       + '<div class="gcard"><div class="gtitle">' + winnerTitle(a,b) + '</div>'
       + '<div class="gscores"><div><span>' + nameOf(0) + '</span><b style="color:var(--kid-a)">' + a + '</b></div>'
       + '<div><span>' + nameOf(1) + '</span><b style="color:var(--kid-b)">' + b + '</b></div></div>'
-      + '<div class="gbtns"><button class="gbig alt" data-gagain>New game</button><button class="gbig" data-gdone>Done</button></div></div>';
+      + '<div class="gsub" style="margin-top:6px">That’s today’s game — see you tomorrow!</div>'
+      + '<div class="gbtns"><button class="gbig" data-gdone>Done</button></div></div>';
     wireGame();
   }
   // shared split layout: top half faces the player sitting across the table (rotated 180°)
@@ -1484,6 +1511,134 @@
     el.addEventListener("pointerdown",function(e){ e.preventDefault(); if(!alive)return; alive=false; GAME.sc[side]++; GAME.scoreEls[side].textContent=GAME.sc[side]; el.classList.add("pop"); buzz(6); play("pack",side); gt(function(){ if(el.parentNode)el.parentNode.removeChild(el); },140); });
     f.appendChild(el);
     gt(function(){ if(alive && el.parentNode) el.parentNode.removeChild(el); }, life||800);
+  }
+
+  /* --- Game 5: Number Rush (race, tap 1→12 in order on your half) --- */
+  function orderStart(){
+    introScreen("Number Rush", "iPad flat between you. Tap the numbers 1 → 12 in order on YOUR half. First to 12 wins — wrong number, no points!", "1️⃣2️⃣3️⃣", function(){ countdown(orderPlay); });
+  }
+  function orderLayout(){
+    var arr=[],i,j,k,t; for(i=1;i<=12;i++) arr.push(i);
+    for(j=arr.length-1;j>0;j--){ k=Math.floor(Math.random()*(j+1)); t=arr[j];arr[j]=arr[k];arr[k]=t; }
+    var cells=[], idx=0, r, col;
+    for(r=0;r<4;r++) for(col=0;col<3;col++){
+      cells.push({ n:arr[idx++], left:10+col*30+(Math.random()*8-4), top:7+r*23+(Math.random()*6-3) });
+    }
+    return cells;
+  }
+  function orderFieldHTML(side){
+    var tint = side===0 ? "var(--kid-a)" : "var(--kid-b)";
+    return '<div class="ofield">' + orderLayout().map(function(c){
+      return '<button class="onum" data-oside="'+side+'" data-onum="'+c.n+'" style="left:'+c.left+'%;top:'+c.top+'%;--oc:'+tint+'">'+c.n+'</button>';
+    }).join("") + '</div>';
+  }
+  function orderPlay(){
+    GAME.running=true; GAME.next=[1,1];
+    GAME.root.innerHTML = '<div class="duel order">'
+      + duelHalves(orderFieldHTML(1), orderFieldHTML(0), '<span style="color:var(--kid-a)" id="on0">1</span>&nbsp;→12&nbsp; <span style="color:var(--kid-b)" id="on1">1</span>&nbsp;→12')
+      + '</div>' + quitBtn();
+    GAME.root.querySelectorAll("[data-onum]").forEach(function(b){ b.addEventListener("pointerdown", function(e){ e.preventDefault(); orderTap(+b.dataset.oside, +b.dataset.onum, b); }); });
+    wireGame();
+  }
+  function orderTap(side, num, btn){
+    if(!GAME || !GAME.running) return;
+    if(num !== GAME.next[side]){ btn.classList.add("wrong"); gt(function(){ btn.classList.remove("wrong"); }, 220); buzz(22); play("reset", side); return; }
+    btn.classList.add("gone"); btn.disabled=true; buzz(6); play("pack", side);
+    GAME.next[side]++;
+    var lab = GAME.root.querySelector("#on"+side); if(lab) lab.textContent = GAME.next[side] > 12 ? "✓" : GAME.next[side];
+    if(GAME.next[side] > 12){ GAME.running=false; showResults(side===0?12:GAME.next[0]-1, side===1?12:GAME.next[1]-1); }
+  }
+
+  /* --- Game 6: Math Duel (first correct answer wins the point, best of 3) --- */
+  function mathStart(){ GAME.wins=[0,0]; introScreen("Math Duel", "iPad flat between you. First to tap the right answer scores — but a wrong tap hands the point to the other player. First to 3 wins!", "➕ ✖️ ➖", mathRound); }
+  function ri(n){ return Math.floor(Math.random()*n); }
+  function makeProblem(){
+    var t=Math.random(), a, b, ans, q;
+    if(t<0.42){ a=3+ri(17); b=3+ri(17); ans=a+b; q=a+" + "+b; }
+    else if(t<0.78){ a=6+ri(14); b=1+ri(a-1); ans=a-b; q=a+" − "+b; }
+    else { a=2+ri(10); b=2+ri(10); ans=a*b; q=a+" × "+b; }
+    var opts=[ans], d, guard=0;
+    while(opts.length<3 && guard++<40){ d = ans + (ri(9)-4); if(d>=0 && opts.indexOf(d)===-1) opts.push(d); }
+    for(var j=opts.length-1;j>0;j--){ var k=Math.floor(Math.random()*(j+1)); var tmp=opts[j];opts[j]=opts[k];opts[k]=tmp; }
+    return { q:q, ans:ans, opts:opts };
+  }
+  function mathHalfHTML(side, p){
+    return '<div class="mq">'+p.q+' = ?</div><div class="mopts">'
+      + p.opts.map(function(o){ return '<button class="mopt" data-mside="'+side+'" data-mans="'+o+'">'+o+'</button>'; }).join("") + '</div>';
+  }
+  function mathRound(){
+    if(!GAME) return;
+    var p = makeProblem(); GAME.mathAns=p.ans; GAME.locked=[false,false]; GAME.mathDone=false;
+    GAME.root.innerHTML = '<div class="duel math">'
+      + '<div class="dhalf dtop">'+mathHalfHTML(1,p)+'</div>'
+      + '<div class="dmid"><span style="color:var(--kid-a)">'+GAME.wins[0]+'</span>&nbsp;—&nbsp;<span style="color:var(--kid-b)">'+GAME.wins[1]+'</span></div>'
+      + '<div class="dhalf dbot">'+mathHalfHTML(0,p)+'</div>'
+      + '</div>' + quitBtn();
+    GAME.root.querySelectorAll("[data-mans]").forEach(function(b){ b.addEventListener("pointerdown", function(e){ e.preventDefault(); mathTap(+b.dataset.mside, +b.dataset.mans, b); }); });
+    wireGame();
+  }
+  function mathTap(side, val, btn){
+    if(!GAME || GAME.mathDone || GAME.locked[side]) return;
+    if(val === GAME.mathAns){
+      GAME.mathDone=true; GAME.wins[side]++; btn.classList.add("right"); buzz(12); play("got", side);
+      if(GAME.wins[side] >= 3) gt(function(){ showResults(GAME.wins[0], GAME.wins[1]); }, 850);
+      else gt(mathRound, 950);
+    } else {
+      GAME.locked[side]=true; btn.classList.add("nope"); btn.disabled=true; buzz(25); play("reset", side);
+      if(GAME.locked[0] && GAME.locked[1] && !GAME.mathDone){ GAME.mathDone=true; gt(mathRound, 950); }
+    }
+  }
+
+  /* --- Game 7: Memory Match (Simon — watch the pattern, repeat it; last one standing) --- */
+  var SPADS = ["#e5484d","#4c8dff","#3fcf6e","#f5c518"];
+  function simonStart(){ GAME.seq=[]; introScreen("Memory Match", "iPad flat between you. Watch the pattern light up, then repeat it on YOUR pad. One wrong tap and you’re out — get the furthest to win!", "🟥🟦🟩🟨", simonNext); }
+  function simonPadsHTML(side){
+    var h='<div class="spads">', i;
+    for(i=0;i<4;i++) h+='<button class="spad" data-sside="'+side+'" data-spad="'+i+'" style="--sc:'+SPADS[i]+'"></button>';
+    return h+'</div>';
+  }
+  function simonRender(){
+    GAME.root.innerHTML = '<div class="duel simon">'
+      + '<div class="dhalf dtop">'+simonPadsHTML(1)+'</div>'
+      + '<div class="dmid" id="sstat">Watch…</div>'
+      + '<div class="dhalf dbot">'+simonPadsHTML(0)+'</div>'
+      + '</div>' + quitBtn();
+    GAME.root.querySelectorAll("[data-spad]").forEach(function(el){ el.addEventListener("pointerdown", function(e){ e.preventDefault(); simonTap(+el.dataset.sside, +el.dataset.spad); }); });
+    wireGame();
+  }
+  function simonFlash(pad){
+    GAME.root.querySelectorAll('.spad[data-spad="'+pad+'"]').forEach(function(el){ el.classList.add("lit"); gt(function(){ el.classList.remove("lit"); }, 340); });
+  }
+  function simonNext(){
+    if(!GAME) return;
+    GAME.seq.push(Math.floor(Math.random()*4));
+    GAME.pos=[0,0]; GAME.out=[false,false]; GAME.cleared=[false,false]; GAME.phase="watch";
+    simonRender();
+    (function playAt(i){
+      if(!GAME) return;
+      if(i >= GAME.seq.length){ GAME.phase="input"; var s=GAME.root.querySelector("#sstat"); if(s) s.textContent="Repeat! ("+GAME.seq.length+")"; return; }
+      simonFlash(GAME.seq[i]); play("pack", 0);
+      gt(function(){ playAt(i+1); }, 600);
+    })(0);
+  }
+  function simonTap(side, pad){
+    if(!GAME || GAME.phase!=="input" || GAME.out[side] || GAME.cleared[side]) return;
+    simonFlash(pad);
+    if(pad === GAME.seq[GAME.pos[side]]){
+      GAME.pos[side]++; play("pack", side); buzz(5);
+      if(GAME.pos[side] >= GAME.seq.length){ GAME.cleared[side]=true; play("got", side); }
+    } else {
+      GAME.out[side]=true; buzz(25); play("reset", side);
+    }
+    var done0 = GAME.out[0]||GAME.cleared[0], done1 = GAME.out[1]||GAME.cleared[1];
+    if(done0 && done1){
+      if(GAME.cleared[0] && GAME.cleared[1]){ GAME.phase="wait"; gt(simonNext, 850); }
+      else {
+        var a = GAME.cleared[0] ? GAME.seq.length : GAME.pos[0];
+        var b = GAME.cleared[1] ? GAME.seq.length : GAME.pos[1];
+        gt(function(){ showResults(a, b); }, 700);
+      }
+    }
   }
 
   /* ---------- boot ---------- */
