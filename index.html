@@ -602,8 +602,8 @@
     var it = state.items[id]; if(!it) return;
     days = days.slice().sort(function(a,b){ return a-b; });
     var type = days.length === 7 ? "daily" : "weekly";
-    state.items[id] = { id:it.id, kid:it.kid, name:it.name, type:type,
-      days: type === "daily" ? [] : days, date:it.date, emoji:it.emoji, order:it.order, t:now() };
+    // clone the whole item so nothing (cat/emoji/order/…) is lost — only day/type change
+    state.items[id] = cloneItem(it, { type:type, days: type === "daily" ? [] : days, t:now() });
     touched();
   }
   function toggleItemDay(id, d){
