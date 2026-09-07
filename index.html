@@ -95,6 +95,12 @@
   .arrow{background:transparent;border:1px solid var(--line);color:var(--muted);border-radius:9px;
     width:34px;height:34px;font-size:15px;cursor:pointer;flex:none;transition:border-color .2s,color .2s}
   .arrow:hover{border-color:var(--muted);color:var(--text)}
+  .dayquick{display:flex;gap:8px;margin-top:12px}
+  .qbtn{flex:1;background:#131A26;border:1px solid var(--line);color:var(--muted);border-radius:10px;
+    padding:9px;font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.08em;
+    text-transform:uppercase;cursor:pointer;transition:border-color .2s,color .2s,background .2s}
+  .qbtn:hover{border-color:var(--muted);color:var(--text)}
+  .qbtn.on{background:var(--accent);border-color:var(--accent);color:#101622}
   .daytxt{text-align:center;flex:1;min-width:0}
   .dow{font-family:var(--display);font-weight:700;font-size:27px;line-height:1;
     text-transform:uppercase;letter-spacing:.04em}
@@ -416,6 +422,15 @@
   function shift(d,n){ var x=new Date(d.getTime()); x.setDate(x.getDate()+n); return x; }
   function startOfToday(){ var t=new Date(); t.setHours(0,0,0,0); return t; }
   function isEvening(){ return new Date().getHours() >= 16; }
+  var DAY_SWITCH = 11;   // hour of day the app rolls over to show the next day
+  function defaultDay(){ return new Date().getHours() < DAY_SWITCH ? startOfToday() : shift(startOfToday(), 1); }
+  var lastDefaultKey = null;
+  // Snap to the right day when a boundary is crossed (11am → tomorrow, midnight → new today),
+  // without yanking the view while someone is browsing other days between boundaries.
+  function checkAutoDay(){
+    var d = defaultDay();
+    if(key(d) !== lastDefaultKey){ lastDefaultKey = key(d); view = d; if(state && code) render(); }
+  }
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];}); }
   function local(k,v){
     try{ if(v === undefined) return window.localStorage.getItem(k); window.localStorage.setItem(k,v); }
@@ -919,12 +934,16 @@
     }).join("") + '</div>';
   }
   function daybarHTML(inner){
-    var dk = key(view);
+    var dk = key(view), todayK = key(startOfToday()), tomorrowK = key(shift(startOfToday(),1));
     return '<div class="daybar"><div class="daynav">'
       + '<button class="arrow" id="prev" aria-label="Previous day">&#9664;</button>'
       + '<div class="daytxt"><div class="dow">' + DOW[view.getDay()] + '</div>'
       + '<div class="dnum">' + MON[view.getMonth()] + " " + view.getDate() + dowLabel(dk) + '</div></div>'
       + '<button class="arrow" id="next" aria-label="Next day">&#9654;</button></div>'
+      + '<div class="dayquick">'
+      +   '<button class="qbtn' + (dk===todayK?" on":"") + '" data-goday="0">Today</button>'
+      +   '<button class="qbtn' + (dk===tomorrowK?" on":"") + '" data-goday="1">Tomorrow</button>'
+      + '</div>'
       + inner + '</div>';
   }
   function cueHTML(kidId, shared){
@@ -1240,6 +1259,7 @@
     on(byId("editBtn"),"click",function(){ edit = !edit; render(); });
     on(byId("prev"),"click",function(){ view = shift(view,-1); render(); });
     on(byId("next"),"click",function(){ view = shift(view,1); render(); });
+    q("[data-goday]").forEach(function(b){ on(b,"click",function(){ view = shift(startOfToday(), +b.dataset.goday); render(); }); });
     on(byId("switchCode"),"click",function(){
       clearInterval(timer); code = null; state = null;
       local(CODEKEY,""); local(CACHE,""); codeScreen();
@@ -1769,12 +1789,12 @@
     render();
     sync();
     clearInterval(timer);
-    timer = setInterval(function(){ if(!document.hidden) sync(); }, 5000);
-    document.addEventListener("visibilitychange", function(){ if(!document.hidden) sync(); });
-    window.addEventListener("focus", function(){ sync(); });
+    timer = setInterval(function(){ if(!document.hidden){ checkAutoDay(); sync(); } }, 5000);
+    document.addEventListener("visibilitychange", function(){ if(!document.hidden){ checkAutoDay(); sync(); } });
+    window.addEventListener("focus", function(){ checkAutoDay(); sync(); });
   }
 
-  view = isEvening() ? shift(startOfToday(),1) : startOfToday();
+  view = defaultDay(); lastDefaultKey = key(view);
   if(!configured()){ setupScreen(); }
   else {
     code = local(CODEKEY) || null;
